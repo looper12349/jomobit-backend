@@ -1,0 +1,163 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.dev
+    container_name: jomobit-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOG_LEVEL: info
+      MONGODB_URI: mongodb://mongo:27017/jomobit
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_monitoring}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-monitoring-secret}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-monitoring-webhook-secret}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-example.us.auth0.com}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://jomobit.local/api}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-monitoring-placeholder}
+      GIT_SHA: ${GIT_SHA:-local}
+      IMAGE_TAG: ${IMAGE_TAG:-local}
+      RELEASE_ID: ${RELEASE_ID:-local-dev}
+      DEPLOYMENT_HISTORY_FILE: /app/deployments/deployment-history.jsonl
+    volumes:
+      - ./logs:/app/logs
+      - ./deployments:/app/deployments
+    depends_on:
+      - mongo
+    networks:
+      - observability
+
+  mongo:
+    image: mongo:7
+    container_name: jomobit-monitoring-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - observability
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+      - alertmanager
+    networks:
+      - observability
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - observability
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - observability
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - ./logs:/var/log/jomobit:ro
+      - ./deployments:/var/log/jomobit-deployments:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - observability
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "9100:9100"
+    networks:
+      - observability
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.2
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - observability
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  alertmanager_data:
+  mongo_data:
