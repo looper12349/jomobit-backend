@@ -1,0 +1,13 @@
+global:
+  resolve_timeout: 2m
+
+route:
+  receiver: noop
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 2h
+
+receivers:
+  # No-op receiver for local/dev monitoring when no external alert webhook is configured.
+  - name: noop
