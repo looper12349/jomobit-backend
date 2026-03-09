@@ -2,10 +2,10 @@ name: CI/CD Pipeline - JOMO Backend (Kubernetes)
 
 on:
   push:
-    branches: [main, develop, feature/enhance-generation]
+    branches: [main, feature/scaling, feature/enhance-generation]
   pull_request:
     branches: [main]
-  workflow_dispatch:
+  workflow_dispatch:      
     inputs:
       environment:
         description: 'Environment to deploy to'
