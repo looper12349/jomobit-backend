@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - JOMO Backend
+name: CI/CD Pipeline - JOMO Backend (Kubernetes)
 
 on:
   push:
@@ -34,7 +34,7 @@ env:
 
 jobs:
   # Run tests (if you have any)
-  # test: n t n g g e
+  # test:
   #   name: Run Tests
   #   runs-on: ubuntu-latest
   #   if: github.event_name == 'pull_request'
@@ -57,33 +57,29 @@ jobs:
   #       env:
   #         NODE_ENV: test
 
-  # Build and push Docker image
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    
+
     outputs:
-      image-tags: ${{ steps.meta.outputs.tags }}
-      image-digest: ${{ steps.build.outputs.digest }}
       should-deploy: ${{ steps.check.outputs.should-deploy }}
       environment: ${{ steps.check.outputs.environment }}
       image-tag: ${{ steps.check.outputs.image-tag }}
-      container-name: ${{ steps.check.outputs.container-name }}
-      port: ${{ steps.check.outputs.port }}
-    
+      namespace: ${{ steps.check.outputs.namespace }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -94,7 +90,7 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
-      
+
       - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
@@ -107,64 +103,40 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
-      
-      - name: Show built tags
-        run: |
-          echo "🏷️ Tags that were built and pushed:"
-          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n'
-          echo ""
-          echo "📋 Image digest: ${{ steps.build.outputs.digest }}"
-      
+
       - name: Check deployment conditions
         id: check
         run: |
-          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/feature/enhance-generation") ]]; then
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "should-deploy=true" >> $GITHUB_OUTPUT
-            
-            # Use short SHA (7 characters) to match Docker tag format
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            
-            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-              echo "environment=production" >> $GITHUB_OUTPUT
-              echo "image-tag=main-${SHORT_SHA}" >> $GITHUB_OUTPUT
-              echo "container-name=${{ env.CONTAINER_NAME }}" >> $GITHUB_OUTPUT
-              echo "port=3000" >> $GITHUB_OUTPUT
-            elif [[ "${{ github.ref }}" == "refs/heads/feature/enhance-generation" ]]; then
-              echo "environment=staging" >> $GITHUB_OUTPUT
-              echo "image-tag=feature-enhance-generation-${SHORT_SHA}" >> $GITHUB_OUTPUT
-              echo "container-name=${{ env.CONTAINER_NAME }}-staging" >> $GITHUB_OUTPUT
-              echo "port=3002" >> $GITHUB_OUTPUT
-            fi
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "image-tag=main-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "namespace=production" >> $GITHUB_OUTPUT
+
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/feature/enhance-generation" ]]; then
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "image-tag=feature-enhance-generation-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "namespace=staging" >> $GITHUB_OUTPUT
+
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should-deploy=true" >> $GITHUB_OUTPUT
             echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-            
             IMAGE_TAG="${{ github.event.inputs.image_tag }}"
-            if [ -z "$IMAGE_TAG" ]; then
-              if [ "${{ github.event.inputs.environment }}" == "staging" ]; then
-                IMAGE_TAG="feature-enhance-generation"
-              else
-                IMAGE_TAG="latest"
-              fi
-            fi
-            
-            echo "image-tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-            
+            [ -z "$IMAGE_TAG" ] && IMAGE_TAG="latest"
+            echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
             if [ "${{ github.event.inputs.environment }}" == "staging" ]; then
-              echo "container-name=${{ env.CONTAINER_NAME }}-staging" >> $GITHUB_OUTPUT
-              echo "port=3002" >> $GITHUB_OUTPUT
+              echo "namespace=staging" >> $GITHUB_OUTPUT
             else
-              echo "container-name=${{ env.CONTAINER_NAME }}" >> $GITHUB_OUTPUT
-              echo "port=3000" >> $GITHUB_OUTPUT
+              echo "namespace=production" >> $GITHUB_OUTPUT
             fi
+
           else
             echo "should-deploy=false" >> $GITHUB_OUTPUT
           fi
           
-          # Debug: Show what tags were actually created
-          echo "🏷️ Available Docker tags from build:"
-          echo "${{ steps.meta.outputs.tags }}"
-      
       - name: Image scan (optional security check)
         if: github.event_name == 'pull_request'
         run: |
@@ -172,339 +144,188 @@ jobs:
           echo "Image: ${{ steps.meta.outputs.tags }}"
           echo "Digest: ${{ steps.build.outputs.digest }}"
 
-  # Deploy to environment
   deploy:
-    name: Deploy to ${{ needs.build-and-push.outputs.environment }}
+    name: Deploy to Kubernetes (${{ needs.build-and-push.outputs.environment }})
     runs-on: ubuntu-latest
     needs: build-and-push
     if: |
-      (needs.build-and-push.outputs.should-deploy == 'true' && github.event.inputs.action != 'rollback') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'deploy')
-    
+      needs.build-and-push.outputs.should-deploy == 'true' &&
+      github.event.inputs.action != 'rollback'
+
     environment:
       name: ${{ needs.build-and-push.outputs.environment }}
-      url: ${{ needs.build-and-push.outputs.environment == 'staging' && 'https://staging-api.jomo.dazzeldigital.com' || 'https://api.jomo.dazzeldigital.com' }}
-    
-    steps:
-      - name: Deploy via Bastion Host
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.BASTION_HOST }}
-          username: ${{ secrets.BASTION_USER }}
-          key: ${{ secrets.BASTION_SSH_KEY }}
-          port: ${{ secrets.BASTION_PORT || 22 }}
-          timeout: 300s
-          script: |
-            echo "🔗 Setting up SSH connection to backend server..."
-            echo "Bastion: ${{ secrets.BASTION_HOST }}"
-            echo "Backend: ${{ secrets.BACKEND_HOST }}"
-            echo "User: ${{ secrets.BACKEND_USER }}"
-            
-            # Option 1: Use existing key on bastion (if BACKEND_SSH_KEY is not provided)
-            if [ -f ~/.ssh/Dazzle_Api_key.pem ]; then
-              echo "📝 Using existing Dazzle_Api_key.pem from bastion host"
-              BACKEND_KEY_PATH="~/.ssh/Dazzle_Api_key.pem"
-              chmod 600 ~/.ssh/Dazzle_Api_key.pem
-            else
-              # Option 2: Use provided BACKEND_SSH_KEY
-              echo "📝 Setting up SSH key for backend connection from GitHub secret..."
-              echo "${{ secrets.BACKEND_SSH_KEY }}" > /tmp/backend_key
-              chmod 600 /tmp/backend_key
-              BACKEND_KEY_PATH="/tmp/backend_key"
-            fi
-            
-            # Test connection to backend server
-            echo "🧪 Testing connection to backend server..."
-            if ! ssh -i ${BACKEND_KEY_PATH} -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.BACKEND_USER }}@${{ secrets.BACKEND_HOST }} 'echo "Connection test successful"'; then
-              echo "❌ Cannot connect to backend server"
-              echo "Debugging information:"
-              echo "- Trying to connect to: ${{ secrets.BACKEND_USER }}@${{ secrets.BACKEND_HOST }}"
-              echo "- Using SSH key path: ${BACKEND_KEY_PATH}"
-              echo "- Available keys on bastion:"
-              ls -la ~/.ssh/
-              
-              # Try with verbose SSH for debugging
-              echo "🔍 Attempting verbose SSH connection..."
-              ssh -i ${BACKEND_KEY_PATH} -o StrictHostKeyChecking=no -o ConnectTimeout=10 -v ${{ secrets.BACKEND_USER }}@${{ secrets.BACKEND_HOST }} 'echo "Verbose connection test"' 2>&1 | head -20
-              
-              # Clean up if we created a temp key
-              [ -f /tmp/backend_key ] && rm -f /tmp/backend_key
-              exit 1
-            fi
-            
-            echo "✅ Backend connection successful!"
-            
-            # SSH into the backend server through bastion
-            ssh -i ${BACKEND_KEY_PATH} -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ secrets.BACKEND_USER }}@${{ secrets.BACKEND_HOST }} << 'ENDSSH'
-            
-            set -euo pipefail  # Exit on any error, undefined variables, or pipe failures
-            
-            # Deployment variables
-            export DOCKER_IMAGE="${{ env.DOCKER_IMAGE }}"
-            export IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
-            export CONTAINER_NAME="${{ needs.build-and-push.outputs.container-name }}"
-            export ENVIRONMENT="${{ needs.build-and-push.outputs.environment }}"
-            export PORT="${{ needs.build-and-push.outputs.port }}"
-            
-            echo "=== Starting Deployment ==="
-            echo "Environment: ${ENVIRONMENT}"
-            echo "Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
-            echo "Container: ${CONTAINER_NAME}"
-            echo "Port: ${PORT}"
-            echo "GitHub SHA: ${{ github.sha }}"
-            echo "Short SHA: $(echo "${{ github.sha }}" | cut -c1-7)"
-            
-            # Function to handle errors
-            handle_error() {
-              echo "❌ Deployment failed at step: $1"
-              echo "📋 Checking for container logs..."
-              if docker ps -a -q -f name=${CONTAINER_NAME} | grep -q .; then
-                echo "Container logs:"
-                docker logs ${CONTAINER_NAME} --tail 50 || true
-              fi
-              exit 1
-            }
-            
-            # Check if Docker is available
-            if ! command -v docker &> /dev/null; then
-              handle_error "Docker is not installed or not in PATH"
-            fi
-            
-            # Check Docker permissions
-            if ! docker ps &> /dev/null; then
-              echo "❌ Docker permission denied. Adding user to docker group..."
-              sudo usermod -aG docker $USER || handle_error "Failed to add user to docker group"
-              newgrp docker || handle_error "Failed to apply docker group"
-              
-              # Test again
-              if ! docker ps &> /dev/null; then
-                echo "❌ Still cannot access Docker. Using sudo..."
-                DOCKER_CMD="sudo docker"
-              else
-                DOCKER_CMD="docker"
-              fi
-            else
-              DOCKER_CMD="docker"
-            fi
-            
-            echo "✅ Docker access confirmed"
-            
-            # Pull the latest image with improved tag handling
-            echo "📦 Pulling Docker image..."
-            echo "🏷️ Target image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
-            
-            # Function to try pulling with different tag strategies
-            pull_image() {
-              local tag_to_try="$1"
-              echo "🔍 Trying to pull: ${DOCKER_IMAGE}:${tag_to_try}"
-              if $DOCKER_CMD pull ${DOCKER_IMAGE}:${tag_to_try}; then
-                IMAGE_TAG=${tag_to_try}
-                echo "✅ Successfully pulled: ${DOCKER_IMAGE}:${IMAGE_TAG}"
-                return 0
-              fi
-              return 1
-            }
-            
-            # Try different tag strategies
-            if ! pull_image "${IMAGE_TAG}"; then
-              echo "❌ Failed to pull ${DOCKER_IMAGE}:${IMAGE_TAG}"
-              echo "🔍 Trying alternative tag strategies..."
-              
-              # Extract branch and SHA parts
-              if [[ "${IMAGE_TAG}" =~ ^(.+)-([a-f0-9]+)$ ]]; then
-                BRANCH_PART="${BASH_REMATCH[1]}"
-                SHA_PART="${BASH_REMATCH[2]}"
-                
-                # Try with just branch name
-                if pull_image "${BRANCH_PART}"; then
-                  echo "✅ Pulled using branch tag"
-                elif pull_image "latest"; then
-                  echo "✅ Pulled using latest tag as fallback"
-                else
-                  handle_error "Failed to pull Docker image with any tag strategy"
-                fi
-              else
-                # If tag doesn't match expected pattern, try latest
-                if ! pull_image "latest"; then
-                  handle_error "Failed to pull Docker image"
-                fi
-              fi
-            fi
-            
-            # Stop existing container if exists
-            if $DOCKER_CMD ps -q -f name=${CONTAINER_NAME} | grep -q .; then
-              echo "🛑 Stopping existing container..."
-              $DOCKER_CMD stop ${CONTAINER_NAME} || true
-              $DOCKER_CMD rm ${CONTAINER_NAME} || true
-            fi
-            
-            # Start new container
-            echo "🚀 Starting new container..."
-            if ! $DOCKER_CMD run -d \
-              --name ${CONTAINER_NAME} \
-              --restart unless-stopped \
-              -p ${PORT}:3000 \
-              -e NODE_ENV=${ENVIRONMENT} \
-              -e PORT=3000 \
-              -e FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
-              -e ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
-              -e MONGODB_URI="${{ secrets.MONGODB_URI }}" \
-              -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-              -e LOG_LEVEL="${{ secrets.LOG_LEVEL || 'info' }}" \
-              -e AUTH0_DOMAIN="${{ secrets.AUTH0_DOMAIN }}" \
-              -e AUTH0_AUDIENCE="${{ secrets.AUTH0_AUDIENCE }}" \
-              -e AUTH0_CLIENT_ID="${{ secrets.AUTH0_CLIENT_ID }}" \
-              -e AUTH0_CLIENT_SECRET="${{ secrets.AUTH0_CLIENT_SECRET }}" \
-              -e AUTH0_WEBHOOK_SECRET="${{ secrets.AUTH0_WEBHOOK_SECRET }}" \
-              -e AUTH0_ACTIONS_SECRET="${{ secrets.AUTH0_ACTIONS_SECRET }}" \
-              -e RAZORPAY_KEY_ID="${{ secrets.RAZORPAY_KEY_ID }}" \
-              -e RAZORPAY_KEY_SECRET="${{ secrets.RAZORPAY_KEY_SECRET }}" \
-              -e RAZORPAY_WEBHOOK_SECRET="${{ secrets.RAZORPAY_WEBHOOK_SECRET }}" \
-              -e DEFAULT_USER_CREDITS="${{ secrets.DEFAULT_USER_CREDITS || '3' }}" \
-              -e SUBSCRIPTION_RECONCILIATION_ENABLED="${{ secrets.SUBSCRIPTION_RECONCILIATION_ENABLED || 'true' }}" \
-              -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-              -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
-              -e IDEOGRAM_API_KEY="${{ secrets.IDEOGRAM_API_KEY }}" \
-              -e FAL_KEY="${{ secrets.FAL_KEY }}" \
-              -e IMAGEKIT_PUBLIC_KEY="${{ secrets.IMAGEKIT_PUBLIC_KEY }}" \
-              -e IMAGEKIT_PRIVATE_KEY="${{ secrets.IMAGEKIT_PRIVATE_KEY }}" \
-              -e IMAGEKIT_URL_ENDPOINT="${{ secrets.IMAGEKIT_URL_ENDPOINT }}" \
-              -e SLACK_WEBHOOK_URL="${{ secrets.SLACK_WEBHOOK_URL }}" \
-              -e N8N_WEBHOOK_URL="${{ secrets.N8N_WEBHOOK_URL }}" \
-              -e N8N_JWT_SECRET="${{ secrets.N8N_JWT_SECRET }}" \
-              -e N8N_REQUEST_KEY="${{ secrets.N8N_REQUEST_KEY }}" \
-              -e N8N_GENERATION_FLOW_ID="${{ secrets.N8N_GENERATION_FLOW_ID }}" \
-              -e N8N_ENHANCEMENT_FLOW_ID="${{ secrets.N8N_ENHANCEMENT_FLOW_ID }}" \
-              ${DOCKER_IMAGE}:${IMAGE_TAG}; then
-              handle_error "Failed to start Docker container"
-            fi
-            
-            # Wait for container to start
-            echo "⏳ Waiting for container to start..."
-            sleep 15
-            
-            # Verify container is running
-            if ! $DOCKER_CMD ps -q -f name=${CONTAINER_NAME} | grep -q .; then
-              handle_error "Container failed to start or exited immediately"
-            fi
-            
-            # Health check
-            echo "🏥 Performing health check..."
-            HEALTH_CHECK_PASSED=false
-            for i in {1..30}; do
-              if curl -f -s http://localhost:${PORT}/health > /dev/null 2>&1; then
-                echo "✅ Health check passed on attempt $i!"
-                HEALTH_CHECK_PASSED=true
-                break
-              fi
-              echo "⏳ Health check attempt $i failed, retrying in 5 seconds..."
-              sleep 5
-            done
-            
-            if [ "$HEALTH_CHECK_PASSED" = false ]; then
-              handle_error "Health check failed after 30 attempts"
-            fi
-            
-            # Clean up old images (keep last 3)
-            echo "🧹 Cleaning up old images..."
-            OLD_IMAGES=$($DOCKER_CMD images ${DOCKER_IMAGE} --format "table {{.Repository}}:{{.Tag}}\t{{.CreatedAt}}" | tail -n +2 | sort -k2 -r | tail -n +4 | awk '{print $1}')
-            if [ -n "$OLD_IMAGES" ]; then
-              echo "$OLD_IMAGES" | xargs -r $DOCKER_CMD rmi || true
-            fi
-            
-            echo "🎉 Deployment completed successfully!"
-            echo "📊 Container status:"
-            $DOCKER_CMD ps -f name=${CONTAINER_NAME}
-            
-            # Show container logs (last 10 lines)
-            echo "📋 Recent container logs:"
-            $DOCKER_CMD logs ${CONTAINER_NAME} --tail 10
-            
-            ENDSSH
-            
-            # Clean up temporary key if we created one
-            [ -f /tmp/backend_key ] && rm -f /tmp/backend_key
-            echo "🧹 Deployment completed and cleaned up"
 
-  # Rollback deployment
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region ap-south-1 \
+            --name 4-jomo-cluster
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace ${{ needs.build-and-push.outputs.namespace }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create/Update K8s Secret from GitHub Secrets
+        run: |
+          kubectl create secret generic jomo-backend-secrets \
+            --namespace=${{ needs.build-and-push.outputs.namespace }} \
+            --from-literal=FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+            --from-literal=ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            --from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --from-literal=AWS_REGION="${{ secrets.AWS_REGION || 'ap-south-1' }}" \
+            --from-literal=MONGODB_URI="${{ secrets.MONGODB_URI }}" \
+            --from-literal=REDIS_URL="${{ secrets.REDIS_URL }}" \
+            --from-literal=LOG_LEVEL="${{ secrets.LOG_LEVEL || 'info' }}" \
+            --from-literal=AUTH0_DOMAIN="${{ secrets.AUTH0_DOMAIN }}" \
+            --from-literal=AUTH0_AUDIENCE="${{ secrets.AUTH0_AUDIENCE }}" \
+            --from-literal=AUTH0_CLIENT_ID="${{ secrets.AUTH0_CLIENT_ID }}" \
+            --from-literal=AUTH0_CLIENT_SECRET="${{ secrets.AUTH0_CLIENT_SECRET }}" \
+            --from-literal=AUTH0_WEBHOOK_SECRET="${{ secrets.AUTH0_WEBHOOK_SECRET }}" \
+            --from-literal=AUTH0_ACTIONS_SECRET="${{ secrets.AUTH0_ACTIONS_SECRET }}" \
+            --from-literal=RAZORPAY_KEY_ID="${{ secrets.RAZORPAY_KEY_ID }}" \
+            --from-literal=RAZORPAY_KEY_SECRET="${{ secrets.RAZORPAY_KEY_SECRET }}" \
+            --from-literal=RAZORPAY_WEBHOOK_SECRET="${{ secrets.RAZORPAY_WEBHOOK_SECRET }}" \
+            --from-literal=DEFAULT_USER_CREDITS="${{ secrets.DEFAULT_USER_CREDITS || '3' }}" \
+            --from-literal=SUBSCRIPTION_RECONCILIATION_ENABLED="${{ secrets.SUBSCRIPTION_RECONCILIATION_ENABLED || 'true' }}" \
+            --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --from-literal=GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            --from-literal=IDEOGRAM_API_KEY="${{ secrets.IDEOGRAM_API_KEY }}" \
+            --from-literal=FAL_KEY="${{ secrets.FAL_KEY }}" \
+            --from-literal=IMAGEKIT_PUBLIC_KEY="${{ secrets.IMAGEKIT_PUBLIC_KEY }}" \
+            --from-literal=IMAGEKIT_PRIVATE_KEY="${{ secrets.IMAGEKIT_PRIVATE_KEY }}" \
+            --from-literal=IMAGEKIT_URL_ENDPOINT="${{ secrets.IMAGEKIT_URL_ENDPOINT }}" \
+            --from-literal=SLACK_WEBHOOK_URL="${{ secrets.SLACK_WEBHOOK_URL }}" \
+            --from-literal=N8N_WEBHOOK_URL="${{ secrets.N8N_WEBHOOK_URL }}" \
+            --from-literal=N8N_JWT_SECRET="${{ secrets.N8N_JWT_SECRET }}" \
+            --from-literal=N8N_REQUEST_KEY="${{ secrets.N8N_REQUEST_KEY }}" \
+            --from-literal=N8N_GENERATION_FLOW_ID="${{ secrets.N8N_GENERATION_FLOW_ID }}" \
+            --from-literal=N8N_ENHANCEMENT_FLOW_ID="${{ secrets.N8N_ENHANCEMENT_FLOW_ID }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to Kubernetes
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: jomo-backend
+            namespace: ${{ needs.build-and-push.outputs.namespace }}
+            labels:
+              app: jomo-backend
+              environment: ${{ needs.build-and-push.outputs.environment }}
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: jomo-backend
+            strategy:
+              type: RollingUpdate
+              rollingUpdate:
+                maxSurge: 1
+                maxUnavailable: 0
+            template:
+              metadata:
+                labels:
+                  app: jomo-backend
+                  version: "${{ needs.build-and-push.outputs.image-tag }}"
+              spec:
+                containers:
+                  - name: jomo-backend
+                    image: ${{ env.DOCKER_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}
+                    imagePullPolicy: Always
+                    ports:
+                      - containerPort: 3000
+                    envFrom:
+                      - secretRef:
+                          name: jomo-backend-secrets
+                    env:
+                      - name: NODE_ENV
+                        value: "${{ needs.build-and-push.outputs.environment }}"
+                      - name: PORT
+                        value: "3000"
+                    livenessProbe:
+                      httpGet:
+                        path: /health
+                        port: 3000
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                    readinessProbe:
+                      httpGet:
+                        path: /health
+                        port: 3000
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                    resources:
+                      requests:
+                        memory: "256Mi"
+                        cpu: "250m"
+                      limits:
+                        memory: "512Mi"
+                        cpu: "500m"
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: jomo-backend-service
+            namespace: ${{ needs.build-and-push.outputs.namespace }}
+          spec:
+            selector:
+              app: jomo-backend
+            ports:
+              - protocol: TCP
+                port: 80
+                targetPort: 3000
+            type: LoadBalancer
+          EOF
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/jomo-backend \
+            --namespace=${{ needs.build-and-push.outputs.namespace }} \
+            --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "📊 Deployment status:"
+          kubectl get pods -n ${{ needs.build-and-push.outputs.namespace }} -l app=jomo-backend
+          echo ""
+          echo "🌐 Service:"
+          kubectl get svc -n ${{ needs.build-and-push.outputs.namespace }} jomo-backend-service
+
   rollback:
-    name: Rollback Deployment
+    name: Rollback Kubernetes Deployment
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'rollback'
-    
+
     environment:
       name: ${{ github.event.inputs.environment }}
-    
+
     steps:
-      - name: Rollback to Previous Version
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.BASTION_HOST }}
-          username: ${{ secrets.BASTION_USER }}
-          key: ${{ secrets.BASTION_SSH_KEY }}
-          port: ${{ secrets.BASTION_PORT || 22 }}
-          script: |
-            ssh -o StrictHostKeyChecking=no ${{ secrets.BACKEND_USER }}@${{ secrets.BACKEND_HOST }} << 'ENDSSH'
-            
-            set -e
-            
-            echo "🔄 Starting rollback process..."
-            
-            # Set container name based on environment
-            if [ "${{ github.event.inputs.environment }}" == "staging" ]; then
-              CONTAINER_NAME="${{ env.CONTAINER_NAME }}-staging"
-              PORT="3002"
-            else
-              CONTAINER_NAME="${{ env.CONTAINER_NAME }}"
-              PORT="3000"
-            fi
-            
-            # Check Docker permissions
-            if ! docker ps &> /dev/null; then
-              DOCKER_CMD="sudo docker"
-            else
-              DOCKER_CMD="docker"
-            fi
-            
-            # Get the previous image (second most recent)
-            PREVIOUS_IMAGE=$($DOCKER_CMD images ${{ env.DOCKER_IMAGE }} --format "table {{.Repository}}:{{.Tag}}" | tail -n +2 | head -n 2 | tail -n 1 | awk '{print $1}')
-            
-            if [ -z "$PREVIOUS_IMAGE" ]; then
-              echo "❌ No previous image found for rollback"
-              exit 1
-            fi
-            
-            echo "📦 Rolling back to: $PREVIOUS_IMAGE"
-            
-            # Stop current container
-            echo "🛑 Stopping current container..."
-            $DOCKER_CMD stop ${CONTAINER_NAME} || true
-            $DOCKER_CMD rm ${CONTAINER_NAME} || true
-            
-            # Start previous version (reuse same environment variables)
-            echo "🚀 Starting previous version..."
-            $DOCKER_CMD run -d \
-              --name ${CONTAINER_NAME} \
-              --restart unless-stopped \
-              -p ${PORT}:3000 \
-              -e NODE_ENV=${{ github.event.inputs.environment }} \
-              -e PORT=3000 \
-              $PREVIOUS_IMAGE
-            
-            # Health check
-            echo "🏥 Performing rollback health check..."
-            sleep 10
-            for i in {1..20}; do
-              if curl -f -s http://localhost:${PORT}/health > /dev/null 2>&1; then
-                echo "✅ Rollback completed successfully!"
-                exit 0
-              fi
-              echo "⏳ Health check attempt $i..."
-              sleep 3
-            done
-            
-            echo "❌ Rollback health check failed!"
-            $DOCKER_CMD logs ${CONTAINER_NAME} --tail 20
-            exit 1
-            
-            ENDSSH
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ap-south-1 --name 4-jomo-cluster
+
+      - name: Rollback deployment
+        run: |
+          NAMESPACE=${{ github.event.inputs.environment == 'staging' && 'staging' || 'production' }}
+          kubectl rollout undo deployment/jomo-backend --namespace=${NAMESPACE}
+          kubectl rollout status deployment/jomo-backend --namespace=${NAMESPACE} --timeout=300s

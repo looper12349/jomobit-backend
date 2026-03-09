@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jomo-backend-config
+  labels:
+    app: jomo-backend
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  FRONTEND_URL: "https://jomo.dazzeldigital.com"
+  ALLOWED_ORIGINS: "https://jomo.dazzeldigital.com,https://api.jomo.dazzeldigital.com"
+  LOG_LEVEL: "info"
+  DEFAULT_USER_CREDITS: "3"
+  SUBSCRIPTION_RECONCILIATION_ENABLED: "true"

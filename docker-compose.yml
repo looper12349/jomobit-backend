@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.dev
+    container_name: jomo-backend-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # These container-specific URIs will override the localhost ones in .env
+      - MONGODB_URI=mongodb://admin:password@mongodb:27017/jomo?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=development
+    depends_on:
+      - mongodb
+      - redis
+
+  mongodb:
+    image: mongo:6.0
+    container_name: jomo-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: jomo
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: jomo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mongodb_data:
+  redis_data:
