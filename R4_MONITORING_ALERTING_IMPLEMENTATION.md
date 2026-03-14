@@ -15,10 +15,10 @@ This document implements requirement set `R4` for monitoring and alerting.
 
 - Application instrumentation:
   - `src/utils/metrics.js`
-  - `src/utils/deploymentTracker.js`
   - `src/app.js` integration (`/metrics`, `/health/deployments`)
 - Monitoring stack:
   - `docker-compose.monitoring.yml`
+  - Nginx gateway routing config: `monitoring/nginx/default.conf`
   - Prometheus: `monitoring/prometheus/prometheus.yml`
   - Alert rules: `monitoring/prometheus/rules/jomobit-alerts.yml`
   - Alertmanager: `monitoring/alertmanager/alertmanager.yml`
@@ -107,11 +107,17 @@ npm run monitoring:up
 
 - App health: `http://localhost:3000/health`
 - App metrics: `http://localhost:3000/metrics`
-- Prometheus: `http://localhost:9090`
-- Alertmanager: `http://localhost:9093`
-- Grafana: `http://localhost:3001`
+- Prometheus: `http://localhost:3000/prometheus/`
+- Alertmanager: `http://localhost:3000/alertmanager/`
+- Grafana: `http://localhost:3000/grafana/`
+- Node exporter metrics: `http://localhost:3000/node-exporter/metrics`
 
-3. Stop stack:
+3. Routing model:
+
+- A single gateway exposes host port `3000`.
+- Monitoring services are reachable via path-based routing (different endpoints on the same port).
+
+4. Stop stack:
 
 ```bash
 npm run monitoring:down
