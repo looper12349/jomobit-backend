@@ -1,0 +1,55 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: staging-ingress
+  namespace: staging
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api-dev-jomo.dazzeldigital.com
+      secretName: staging-tls
+  rules:
+    - host: api-dev-jomo.dazzeldigital.com
+      http:
+        paths:
+          # Application API (main backend)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: jomo-backend-service
+                port:
+                  number: 80
+
+          # Metrics endpoint (Prometheus scraping)
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: jomo-backend-service
+                port:
+                  number: 80
+          
+          # Grafana Monitoring
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+          
+          # Prometheus Monitoring
+          - path: /prometheus
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090

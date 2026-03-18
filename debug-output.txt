@@ -1,0 +1,110 @@
+🔍 Debugging Ingress Issue...
+
+1️⃣ Check Ingress Controller Pods:
+NAME                                        READY   STATUS      RESTARTS   AGE
+ingress-nginx-admission-create-th9kh        0/1     Completed   0          19m
+ingress-nginx-admission-patch-h4v8v         0/1     Completed   1          19m
+ingress-nginx-controller-7cfc9845c9-kvbgr   1/1     Running     0          19m
+
+2️⃣ Check Ingress Controller Service:
+NAME                                 TYPE           CLUSTER-IP       EXTERNAL-IP                                                                      PORT(S)                      AGE
+ingress-nginx-controller             LoadBalancer   10.100.215.169   ac0313d2e870f42a9a775e60144d1f3a-799e9ec9e60eab7b.elb.ap-south-1.amazonaws.com   80:32340/TCP,443:31740/TCP   19m
+ingress-nginx-controller-admission   ClusterIP      10.100.37.143    <none>                                                                           443/TCP                      19m
+
+3️⃣ Check Ingress Status:
+NAME                 CLASS   HOSTS                            ADDRESS                                                                          PORTS     AGE
+monitoring-ingress   nginx   api-dev-jomo.dazzeldigital.com   ac0313d2e870f42a9a775e60144d1f3a-799e9ec9e60eab7b.elb.ap-south-1.amazonaws.com   80, 443   10m
+
+4️⃣ Describe Ingress:
+Name:             monitoring-ingress
+Labels:           <none>
+Namespace:        monitoring-staging
+Address:          ac0313d2e870f42a9a775e60144d1f3a-799e9ec9e60eab7b.elb.ap-south-1.amazonaws.com
+Ingress Class:    nginx
+Default backend:  <default>
+TLS:
+  monitoring-staging-tls terminates api-dev-jomo.dazzeldigital.com
+Rules:
+  Host                            Path  Backends
+  ----                            ----  --------
+  api-dev-jomo.dazzeldigital.com  
+                                  /grafana(/|$)(.*)      grafana:3000 (192.168.39.97:3000)
+                                  /prometheus(/|$)(.*)   prometheus:9090 (192.168.73.21:9090)
+Annotations:                      cert-manager.io/cluster-issuer: letsencrypt-prod
+                                  nginx.ingress.kubernetes.io/rewrite-target: /$2
+                                  nginx.ingress.kubernetes.io/ssl-redirect: false
+Events:
+  Type    Reason  Age                From                      Message
+  ----    ------  ----               ----                      -------
+  Normal  Sync    10m (x2 over 10m)  nginx-ingress-controller  Scheduled for sync
+
+5️⃣ Check Ingress Class:
+NAME    CONTROLLER             PARAMETERS   AGE
+nginx   k8s.io/ingress-nginx   <none>       19m
+
+6️⃣ Ingress Controller Logs (last 50 lines):
+I0318 13:39:19.099837       8 nginx.go:261] "Starting NGINX Ingress controller"
+I0318 13:39:19.114178       8 event.go:285] Event(v1.ObjectReference{Kind:"ConfigMap", Namespace:"ingress-nginx", Name:"ingress-nginx-controller", UID:"bbe7be11-c4a0-489d-bacc-a3751d447cce", APIVersion:"v1", ResourceVersion:"2345565", FieldPath:""}): type: 'Normal' reason: 'CREATE' ConfigMap ingress-nginx/ingress-nginx-controller
+I0318 13:39:20.203886       8 store.go:432] "Found valid IngressClass" ingress="default/jomo-backend-ingress" ingressclass="nginx"
+I0318 13:39:20.204119       8 event.go:285] Event(v1.ObjectReference{Kind:"Ingress", Namespace:"default", Name:"jomo-backend-ingress", UID:"511fee99-1abf-4003-aa8a-df904bde4122", APIVersion:"networking.k8s.io/v1", ResourceVersion:"3169", FieldPath:""}): type: 'Normal' reason: 'Sync' Scheduled for sync
+I0318 13:39:20.204562       8 store.go:432] "Found valid IngressClass" ingress="monitoring-staging/monitoring-ingress" ingressclass="nginx"
+I0318 13:39:20.204771       8 event.go:285] Event(v1.ObjectReference{Kind:"Ingress", Namespace:"monitoring-staging", Name:"monitoring-ingress", UID:"d2a96677-d829-475e-8240-3eaa79b68824", APIVersion:"networking.k8s.io/v1", ResourceVersion:"2344307", FieldPath:""}): type: 'Normal' reason: 'Sync' Scheduled for sync
+W0318 13:39:20.204941       8 backend_ssl.go:47] Error obtaining X.509 certificate: no object matching key "monitoring-staging/monitoring-staging-tls" in local store
+I0318 13:39:20.301574       8 nginx.go:304] "Starting NGINX process"
+I0318 13:39:20.301658       8 leaderelection.go:248] attempting to acquire leader lease ingress-nginx/ingress-nginx-leader...
+I0318 13:39:20.302048       8 nginx.go:324] "Starting validation webhook" address=":8443" certPath="/usr/local/certificates/cert" keyPath="/usr/local/certificates/key"
+W0318 13:39:20.302288       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+W0318 13:39:20.302492       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+I0318 13:39:20.302583       8 controller.go:190] "Configuration changes detected, backend reload required"
+I0318 13:39:20.314235       8 leaderelection.go:258] successfully acquired lease ingress-nginx/ingress-nginx-leader
+I0318 13:39:20.314599       8 status.go:84] "New leader elected" identity="ingress-nginx-controller-7cfc9845c9-kvbgr"
+I0318 13:39:20.337281       8 status.go:300] "updating Ingress status" namespace="default" ingress="jomo-backend-ingress" currentValue=null newValue=[{"hostname":"ac0313d2e870f42a9a775e60144d1f3a-799e9ec9e60eab7b.elb.ap-south-1.amazonaws.com"}]
+I0318 13:39:20.339726       8 status.go:300] "updating Ingress status" namespace="monitoring-staging" ingress="monitoring-ingress" currentValue=null newValue=[{"hostname":"ac0313d2e870f42a9a775e60144d1f3a-799e9ec9e60eab7b.elb.ap-south-1.amazonaws.com"}]
+I0318 13:39:20.347682       8 event.go:285] Event(v1.ObjectReference{Kind:"Ingress", Namespace:"default", Name:"jomo-backend-ingress", UID:"511fee99-1abf-4003-aa8a-df904bde4122", APIVersion:"networking.k8s.io/v1", ResourceVersion:"2345691", FieldPath:""}): type: 'Normal' reason: 'Sync' Scheduled for sync
+W0318 13:39:20.349147       8 backend_ssl.go:47] Error obtaining X.509 certificate: no object matching key "monitoring-staging/monitoring-staging-tls" in local store
+I0318 13:39:20.349315       8 event.go:285] Event(v1.ObjectReference{Kind:"Ingress", Namespace:"monitoring-staging", Name:"monitoring-ingress", UID:"d2a96677-d829-475e-8240-3eaa79b68824", APIVersion:"networking.k8s.io/v1", ResourceVersion:"2345692", FieldPath:""}): type: 'Normal' reason: 'Sync' Scheduled for sync
+I0318 13:39:20.404672       8 controller.go:207] "Backend successfully reloaded"
+I0318 13:39:20.404835       8 controller.go:218] "Initial sync, sleeping for 1 second"
+I0318 13:39:20.405202       8 event.go:285] Event(v1.ObjectReference{Kind:"Pod", Namespace:"ingress-nginx", Name:"ingress-nginx-controller-7cfc9845c9-kvbgr", UID:"1ebaf46d-a7c4-4c78-a2a4-025360cadbd1", APIVersion:"v1", ResourceVersion:"2345592", FieldPath:""}): type: 'Normal' reason: 'RELOAD' NGINX reload triggered due to a change in configuration
+W0318 13:39:24.121097       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+W0318 13:39:24.121341       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+W0318 13:39:31.194779       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+W0318 13:39:31.194891       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+W0318 13:39:34.529738       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+W0318 13:39:34.529852       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+W0318 13:48:08.101634       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+I0318 13:48:08.101755       8 controller.go:190] "Configuration changes detected, backend reload required"
+I0318 13:48:08.187259       8 controller.go:207] "Backend successfully reloaded"
+I0318 13:48:08.194354       8 event.go:285] Event(v1.ObjectReference{Kind:"Pod", Namespace:"ingress-nginx", Name:"ingress-nginx-controller-7cfc9845c9-kvbgr", UID:"1ebaf46d-a7c4-4c78-a2a4-025360cadbd1", APIVersion:"v1", ResourceVersion:"2345592", FieldPath:""}): type: 'Normal' reason: 'RELOAD' NGINX reload triggered due to a change in configuration
+W0318 13:48:08.475269       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+W0318 13:48:08.475425       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+I0318 13:48:08.520626       8 admission.go:149] processed ingress via admission controller {testedIngressLength:2 testedIngressTime:0.045s renderingIngressLength:2 renderingIngressTime:0.001s admissionTime:30.8kBs testedConfigurationSize:0.046}
+I0318 13:48:08.520658       8 main.go:110] "successfully validated configuration, accepting" ingress="monitoring-staging/monitoring-ingress"
+I0318 13:48:08.530591       8 store.go:432] "Found valid IngressClass" ingress="monitoring-staging/monitoring-ingress" ingressclass="nginx"
+W0318 13:48:08.531050       8 backend_ssl.go:47] Error obtaining X.509 certificate: no object matching key "monitoring-staging/monitoring-staging-tls" in local store
+I0318 13:48:08.531364       8 event.go:285] Event(v1.ObjectReference{Kind:"Ingress", Namespace:"monitoring-staging", Name:"monitoring-ingress", UID:"d986aa32-acd9-4aef-b397-a0800d823755", APIVersion:"networking.k8s.io/v1", ResourceVersion:"2347257", FieldPath:""}): type: 'Normal' reason: 'Sync' Scheduled for sync
+W0318 13:48:11.435590       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+W0318 13:48:11.435722       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+I0318 13:48:11.435887       8 controller.go:190] "Configuration changes detected, backend reload required"
+I0318 13:48:11.528763       8 controller.go:207] "Backend successfully reloaded"
+I0318 13:48:11.529069       8 event.go:285] Event(v1.ObjectReference{Kind:"Pod", Namespace:"ingress-nginx", Name:"ingress-nginx-controller-7cfc9845c9-kvbgr", UID:"1ebaf46d-a7c4-4c78-a2a4-025360cadbd1", APIVersion:"v1", ResourceVersion:"2345592", FieldPath:""}): type: 'Normal' reason: 'RELOAD' NGINX reload triggered due to a change in configuration
+I0318 13:48:20.328927       8 status.go:300] "updating Ingress status" namespace="monitoring-staging" ingress="monitoring-ingress" currentValue=null newValue=[{"hostname":"ac0313d2e870f42a9a775e60144d1f3a-799e9ec9e60eab7b.elb.ap-south-1.amazonaws.com"}]
+W0318 13:48:20.337677       8 backend_ssl.go:47] Error obtaining X.509 certificate: no object matching key "monitoring-staging/monitoring-staging-tls" in local store
+W0318 13:48:20.337755       8 controller.go:1207] Service "default/jomo-backend-service" does not have any active Endpoint.
+I0318 13:48:20.337789       8 event.go:285] Event(v1.ObjectReference{Kind:"Ingress", Namespace:"monitoring-staging", Name:"monitoring-ingress", UID:"d986aa32-acd9-4aef-b397-a0800d823755", APIVersion:"networking.k8s.io/v1", ResourceVersion:"2347293", FieldPath:""}): type: 'Normal' reason: 'Sync' Scheduled for sync
+W0318 13:48:20.337860       8 controller.go:1428] Error getting SSL certificate "monitoring-staging/monitoring-staging-tls": local SSL certificate monitoring-staging/monitoring-staging-tls was not found. Using default certificate
+W0318 13:39:12.260049       1 client_config.go:615] Neither --kubeconfig nor --master was specified.  Using the inClusterConfig.  This might not work.
+{"err":"secrets \"ingress-nginx-admission\" not found","level":"info","msg":"no secret found","source":"k8s/k8s.go:229","time":"2026-03-18T13:39:12Z"}
+{"level":"info","msg":"creating new secret","source":"cmd/create.go:28","time":"2026-03-18T13:39:12Z"}
+W0318 13:39:12.423586       1 client_config.go:615] Neither --kubeconfig nor --master was specified.  Using the inClusterConfig.  This might not work.
+{"level":"info","msg":"patching webhook configurations 'ingress-nginx-admission' mutating=false, validating=true, failurePolicy=Fail","source":"k8s/k8s.go:118","time":"2026-03-18T13:39:12Z"}
+{"level":"info","msg":"Patched hook(s)","source":"k8s/k8s.go:138","time":"2026-03-18T13:39:12Z"}
+
+7️⃣ Check if ingress has ingressClassName set:
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: api-dev-jomo.dazzeldigital.com
+    http:
+      paths:
+
