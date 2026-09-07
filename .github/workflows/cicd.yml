@@ -188,8 +188,6 @@ jobs:
             --namespace=${{ needs.build-and-push.outputs.namespace }} \
             --from-literal=FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
             --from-literal=ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
-            --from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
-            --from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
             --from-literal=AWS_REGION="${{ secrets.AWS_REGION || 'ap-south-1' }}" \
             --from-literal=MONGODB_URI="${{ secrets.MONGODB_URI }}" \
             --from-literal=REDIS_URL="${{ secrets.REDIS_URL }}" \
@@ -485,13 +483,13 @@ jobs:
           echo ""
           echo "📈 Monitoring Access:"
           if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
-            echo "Application:  https://api.jomo.dazzeldigital.com/api"
-            echo "Grafana:      https://api.jomo.dazzeldigital.com/grafana/"
-            echo "Prometheus:   https://api.jomo.dazzeldigital.com/prometheus/"
+            echo "Application:  https://api.amritesh.dev/api"
+            echo "Grafana:      https://api.amritesh.dev/grafana/"
+            echo "Prometheus:   https://api.amritesh.dev/prometheus/"
           else
-            echo "Application:  https://api-dev-jomo.dazzeldigital.com/api"
-            echo "Grafana:      https://api-dev-jomo.dazzeldigital.com/grafana/"
-            echo "Prometheus:   https://api-dev-jomo.dazzeldigital.com/prometheus/"
+            echo "Application:  https://api-dev.amritesh.dev/api"
+            echo "Grafana:      https://api-dev.amritesh.dev/grafana/"
+            echo "Prometheus:   https://api-dev.amritesh.dev/prometheus/"
           fi
           echo ""
           echo "🔍 Ingress Status:"

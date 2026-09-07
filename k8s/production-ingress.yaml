@@ -12,10 +12,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - api.jomo.dazzeldigital.com
+        - api.amritesh.dev
       secretName: production-tls
   rules:
-    - host: api.jomo.dazzeldigital.com
+    - host: api.amritesh.dev
       http:
         paths:
           # Application API (main backend)

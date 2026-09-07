@@ -11,7 +11,7 @@ metadata:
     # alb.ingress.kubernetes.io/target-type: ip
 spec:
   rules:
-  - host: api.jomo.dazzeldigital.com
+  - host: api.amritesh.dev
     http:
       paths:
       - path: /

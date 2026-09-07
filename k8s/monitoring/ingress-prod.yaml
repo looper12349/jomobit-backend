@@ -11,10 +11,10 @@ spec:
   ingressClassName: nginx  # Use ingressClassName instead of annotation
   tls:
     - hosts:
-        - api.jomo.dazzeldigital.com
+        - api.amritesh.dev
       secretName: monitoring-prod-tls
   rules:
-    - host: api.jomo.dazzeldigital.com
+    - host: api.amritesh.dev
       http:
         paths:
           # Grafana Production

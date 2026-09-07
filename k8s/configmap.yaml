@@ -7,8 +7,8 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3000"
-  FRONTEND_URL: "https://jomo.dazzeldigital.com"
-  ALLOWED_ORIGINS: "https://jomo.dazzeldigital.com,https://api.jomo.dazzeldigital.com"
+  FRONTEND_URL: "https://jomo.amritesh.dev"
+  ALLOWED_ORIGINS: "https://jomo.amritesh.dev,https://api.amritesh.dev"
   LOG_LEVEL: "info"
   DEFAULT_USER_CREDITS: "3"
   SUBSCRIPTION_RECONCILIATION_ENABLED: "true"

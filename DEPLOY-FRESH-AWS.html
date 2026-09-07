@@ -1,0 +1,1827 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JOMO Backend EKS Runbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* reset formerly supplied by the artifact wrapper */
+  :root { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+
+  :root {
+    --ground: #F7F8F7;
+    --surface: #FFFFFF;
+    --surface-sunk: #EDF0EF;
+    --ink: #16211F;
+    --ink-soft: #3C4A48;
+    --ink-mute: #5A6866;
+    --ink-faint: #8A9795;
+    --rule: #DDE3E1;
+    --rule-strong: #C4CDCB;
+    --accent: #0E7C6B;
+    --accent-soft: #E0F0EC;
+    --accent-ink: #0A5A4E;
+    --warn: #A8620A;
+    --warn-soft: #FBEEDC;
+    --danger: #A33049;
+    --danger-soft: #FAE7EA;
+    --term-bg: #101A19;
+    --term-ink: #DCE6E4;
+    --term-rule: #24322F;
+    --term-dim: #7E908D;
+    --term-accent: #57D6B9;
+
+    --f-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+    --f-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --f-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1413;
+      --surface: #161E1D;
+      --surface-sunk: #111918;
+      --ink: #E6EDEB;
+      --ink-soft: #C3CFCC;
+      --ink-mute: #90A19E;
+      --ink-faint: #6B7B78;
+      --rule: #24302E;
+      --rule-strong: #35443F;
+      --accent: #4FD1B5;
+      --accent-soft: #122A26;
+      --accent-ink: #7FE0CA;
+      --warn: #E0A24A;
+      --warn-soft: #2A2113;
+      --danger: #E8798F;
+      --danger-soft: #2B161C;
+      --term-bg: #0A100F;
+      --term-ink: #DCE6E4;
+      --term-rule: #1E2A28;
+      --term-dim: #758683;
+      --term-accent: #57D6B9;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0E1413;
+    --surface: #161E1D;
+    --surface-sunk: #111918;
+    --ink: #E6EDEB;
+    --ink-soft: #C3CFCC;
+    --ink-mute: #90A19E;
+    --ink-faint: #6B7B78;
+    --rule: #24302E;
+    --rule-strong: #35443F;
+    --accent: #4FD1B5;
+    --accent-soft: #122A26;
+    --accent-ink: #7FE0CA;
+    --warn: #E0A24A;
+    --warn-soft: #2A2113;
+    --danger: #E8798F;
+    --danger-soft: #2B161C;
+    --term-bg: #0A100F;
+    --term-ink: #DCE6E4;
+    --term-rule: #1E2A28;
+    --term-dim: #758683;
+    --term-accent: #57D6B9;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 56px 0 32px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 22px; height: 2px;
+    background: var(--accent);
+    flex: none;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 5vw, 3.1rem);
+    line-height: 1.04;
+    letter-spacing: -0.024em;
+    margin: 0;
+    text-wrap: balance;
+    max-width: 22ch;
+  }
+
+  .standfirst {
+    font-size: 1.0625rem;
+    color: var(--ink-mute);
+    max-width: 60ch;
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  .target {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--surface);
+    width: fit-content;
+    max-width: 100%;
+  }
+  .target div {
+    padding: 9px 16px;
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .target div:last-child { border-right: 0; }
+  .target dt {
+    font-family: var(--f-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .target dd {
+    margin: 0;
+    font-family: var(--f-mono);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* ---------- rail ---------- */
+
+  .rail {
+    position: sticky;
+    top: 20px;
+    padding-top: 36px;
+    font-size: 13px;
+  }
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .rail { position: static; padding: 32px 0 0; border-bottom: 1px solid var(--rule); padding-bottom: 28px; }
+  }
+
+  .rail-head {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 12px;
+  }
+
+  .progress {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .progress b {
+    font-family: var(--f-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .progress span {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .bar {
+    height: 3px;
+    background: var(--surface-sunk);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 22px;
+  }
+  .bar i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width .25s ease;
+  }
+
+  .rail ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .rail li a {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 8px;
+    padding: 4px 0;
+    text-decoration: none;
+    color: var(--ink-mute);
+    line-height: 1.35;
+    border-radius: 2px;
+  }
+  .rail li a:hover { color: var(--accent); }
+  .rail li a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .rail li a em {
+    font-family: var(--f-mono);
+    font-style: normal;
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+    padding-top: 1px;
+  }
+  .rail li a.done { color: var(--ink-faint); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .rail li a.done em { color: var(--accent); }
+  .rail .grp {
+    font-family: var(--f-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 18px 0 6px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .rail .grp:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+
+  /* ---------- body ---------- */
+
+  main { padding-top: 36px; min-width: 0; }
+
+  main > * { max-width: var(--measure); }
+  main > .wide, main > section > .wide { max-width: none; }
+
+  section { margin-bottom: 4px; }
+
+  .phase {
+    padding: 40px 0 8px;
+    border-top: 1px solid var(--rule);
+    margin-top: 36px;
+  }
+  .phase:first-of-type { border-top: 0; margin-top: 0; padding-top: 8px; }
+
+  .phase-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .phase-num {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    padding: 4px 8px;
+    border-radius: 3px;
+    flex: none;
+    margin-top: 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .phase h2 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: -0.016em;
+    line-height: 1.2;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .phase-meta {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 5px;
+  }
+
+  h3 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 1.0625rem;
+    letter-spacing: -0.008em;
+    margin: 32px 0 8px;
+    color: var(--ink);
+  }
+  h4 {
+    font-family: var(--f-mono);
+    font-weight: 600;
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin: 26px 0 8px;
+  }
+
+  p { margin: 0 0 14px; text-wrap: pretty; }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  a:hover { border-bottom-color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  strong { font-weight: 600; color: var(--ink); }
+
+  ol, ul { margin: 0 0 14px; padding-left: 22px; display: flex; flex-direction: column; gap: 5px; }
+  li { padding-left: 2px; }
+
+  code {
+    font-family: var(--f-mono);
+    font-size: 0.865em;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule);
+    padding: 1px 4px;
+    border-radius: 2px;
+    color: var(--ink-soft);
+    word-break: break-word;
+  }
+
+  /* ---------- terminal blocks ---------- */
+
+  .term {
+    background: var(--term-bg);
+    border: 1px solid var(--term-rule);
+    border-radius: 4px;
+    margin: 0 0 18px;
+    overflow: hidden;
+    position: relative;
+  }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 8px 6px 12px;
+    border-bottom: 1px solid var(--term-rule);
+    background: color-mix(in srgb, var(--term-bg) 80%, #fff 4%);
+  }
+  .term-label {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--term-dim);
+  }
+  .copy {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--term-dim);
+    background: transparent;
+    border: 1px solid var(--term-rule);
+    border-radius: 2px;
+    padding: 3px 8px;
+    cursor: pointer;
+    flex: none;
+  }
+  .copy:hover { color: var(--term-accent); border-color: var(--term-accent); }
+  .copy:focus-visible { outline: 2px solid var(--term-accent); outline-offset: 2px; }
+  .copy[data-ok="1"] { color: var(--term-accent); border-color: var(--term-accent); }
+
+  .term pre {
+    margin: 0;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: var(--f-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--term-ink);
+    tab-size: 2;
+  }
+  .term pre .c { color: var(--term-dim); }
+  .term pre .k { color: var(--term-accent); }
+
+  /* ---------- callouts ---------- */
+
+  .note {
+    border-left: 3px solid var(--rule-strong);
+    background: var(--surface);
+    padding: 12px 16px;
+    margin: 0 0 18px;
+    border-radius: 0 3px 3px 0;
+    font-size: 14.25px;
+  }
+  .note > :last-child { margin-bottom: 0; }
+  .note-label {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .note.warn .note-label { color: var(--warn); }
+  .note.stop { border-left-color: var(--danger); background: var(--danger-soft); }
+  .note.stop .note-label { color: var(--danger); }
+  .note.tip { border-left-color: var(--accent); background: var(--accent-soft); }
+  .note.tip .note-label { color: var(--accent-ink); }
+
+  /* ---------- tables ---------- */
+
+  .tw { overflow-x: auto; margin: 0 0 18px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    background: var(--surface-sunk);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { font-size: 12px; background: transparent; border: 0; padding: 0; color: var(--ink-soft); }
+  .num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tfoot td { font-weight: 600; background: var(--surface-sunk); border-top: 1px solid var(--rule-strong); }
+  .new { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-soft); padding: 1px 5px; border-radius: 2px; white-space: nowrap; }
+
+  /* ---------- checkbox ---------- */
+
+  .chk {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 18px 0 4px;
+    padding: 8px 12px;
+    border: 1px dashed var(--rule-strong);
+    border-radius: 3px;
+    width: fit-content;
+    cursor: pointer;
+    background: var(--surface);
+    user-select: none;
+  }
+  .chk:hover { border-color: var(--accent); }
+  .chk input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; cursor: pointer; }
+  .chk span {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  .chk input:checked + span { color: var(--accent); }
+
+  /* ---------- dependency diagram ---------- */
+
+  .chain { margin: 8px 0 28px; }
+  .chain svg { width: 100%; height: auto; display: block; }
+  .chain figcaption {
+    font-size: 13px;
+    color: var(--ink-mute);
+    margin-top: 10px;
+    max-width: 62ch;
+  }
+
+  /* ---------- misc ---------- */
+
+  .lede-block {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 3px 3px 0;
+    padding: 14px 18px;
+    margin: 0 0 28px;
+    font-size: 14.25px;
+  }
+  .lede-block > :last-child { margin-bottom: 0; }
+
+  hr.big { border: 0; border-top: 1px solid var(--rule-strong); margin: 48px 0 0; max-width: none; }
+
+  .apx-head {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 48px 0 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule-strong);
+  }
+
+  footer {
+    grid-column: 1 / -1;
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <div class="eyebrow">Deployment runbook &middot; jomobit-backend &middot; feature/scaling</div>
+    <h1>JOMO Backend on Fresh EKS</h1>
+    <p class="standfirst">Rebuilding the staging deployment from a new laptop and an empty AWS account, with a <code>.env</code> inherited from a teammate: IAM, cluster, ingress, TLS, monitoring, and CI wiring, in the order the dependencies actually require.</p>
+    <dl class="target">
+      <div><dt>Cluster</dt><dd>4-jomo-cluster</dd></div>
+      <div><dt>Region</dt><dd>ap-south-1</dd></div>
+      <div><dt>Namespace</dt><dd>staging</dd></div>
+      <div><dt>Host</dt><dd>api-dev.amritesh.dev</dd></div>
+      <div><dt>Est. time</dt><dd>~3.5 h</dd></div>
+    </dl>
+  </header>
+
+  <nav class="rail" aria-label="Phase index">
+    <div class="rail-head">Progress</div>
+    <div class="progress"><b id="pdone">0</b><span>/ 15 phases</span></div>
+    <div class="bar"><i id="pbar"></i></div>
+
+    <div class="rail-head">Phases</div>
+    <ol id="railList">
+      <div class="grp">Foundation</div>
+      <li><a href="#p0" data-p="0"><em>00</em><span>New laptop bootstrap</span></a></li>
+      <li><a href="#p1" data-p="1"><em>01</em><span>AWS account &amp; IAM</span></a></li>
+      <li><a href="#p2" data-p="2"><em>02</em><span>Preflight checks</span></a></li>
+      <div class="grp">Cluster</div>
+      <li><a href="#p3" data-p="3"><em>03</em><span>Create the EKS cluster</span></a></li>
+      <li><a href="#p4" data-p="4"><em>04</em><span>StorageClass gp2</span></a></li>
+      <li><a href="#p5" data-p="5"><em>05</em><span>metrics-server</span></a></li>
+      <li><a href="#p6" data-p="6"><em>06</em><span>ingress-nginx</span></a></li>
+      <div class="grp">External wiring</div>
+      <li><a href="#p7" data-p="7"><em>07</em><span>DNS on amritesh.dev</span></a></li>
+      <li><a href="#p8" data-p="8"><em>08</em><span>Atlas IP allowlist</span></a></li>
+      <div class="grp">CI access</div>
+      <li><a href="#p9" data-p="9"><em>09</em><span>IAM user for Actions</span></a></li>
+      <li><a href="#p10" data-p="10"><em>10</em><span>GitHub secrets</span></a></li>
+      <li><a href="#p11" data-p="11"><em>11</em><span>cert-manager email</span></a></li>
+      <div class="grp">Ship</div>
+      <li><a href="#p12" data-p="12"><em>12</em><span>Deploy</span></a></li>
+      <li><a href="#p13" data-p="13"><em>13</em><span>Verify</span></a></li>
+      <li><a href="#p14" data-p="14"><em>14</em><span>Post-deploy wiring</span></a></li>
+      <div class="grp">Reference</div>
+      <li><a href="#prod"><em>&rarr;</em><span>Going to production</span></a></li>
+      <li><a href="#apxa"><em>A</em><span>Cost breakdown</span></a></li>
+      <li><a href="#apxb"><em>B</em><span>What broke last time</span></a></li>
+      <li><a href="#apxc"><em>C</em><span>Changing name / region</span></a></li>
+      <li><a href="#quick"><em>&#8984;</em><span>Quick reference</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <div class="lede-block">
+      <p><strong>Why reuse the same cluster name and region.</strong> <code>.github/workflows/cicd.yml</code> hardcodes <code>--region ap-south-1 --name 4-jomo-cluster</code> in every <code>aws eks update-kubeconfig</code> step. Recreating with the identical name means <em>no workflow changes at all</em>. To use different values, see <a href="#apxc">Appendix C</a>.</p>
+    </div>
+
+    <figure class="chain wide">
+      <svg viewBox="0 0 720 222" role="img" aria-label="Four hard orderings: admin IAM before any AWS command; EBS CSI driver before PVC binding; DNS before certificate issuance; Atlas allowlist before pod startup.">
+        <defs>
+          <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,1 L7,4 L0,7 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g style="color: var(--rule-strong)">
+          <line x1="150" y1="30"  x2="243" y2="30"  stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+          <line x1="150" y1="84"  x2="243" y2="84"  stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+          <line x1="150" y1="138" x2="243" y2="138" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+          <line x1="150" y1="192" x2="243" y2="192" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="11.5">
+          <text x="0" y="26" style="fill: var(--accent)" font-weight="600">Phase 01</text>
+          <text x="0" y="41" style="fill: var(--ink-mute)">Admin IAM + CLI</text>
+          <text x="256" y="26" style="fill: var(--ink)" font-weight="500">Any aws / eksctl command</text>
+          <text x="256" y="41" style="fill: var(--ink-faint)">else nothing authenticates at all</text>
+
+          <text x="0" y="80" style="fill: var(--accent)" font-weight="600">Phase 03 &middot; 04</text>
+          <text x="0" y="95" style="fill: var(--ink-mute)">EBS CSI + gp2</text>
+          <text x="256" y="80" style="fill: var(--ink)" font-weight="500">PVCs bind</text>
+          <text x="256" y="95" style="fill: var(--ink-faint)">else Prometheus/Grafana Pending forever</text>
+
+          <text x="0" y="134" style="fill: var(--accent)" font-weight="600">Phase 07</text>
+          <text x="0" y="149" style="fill: var(--ink-mute)">DNS resolves</text>
+          <text x="256" y="134" style="fill: var(--ink)" font-weight="500">TLS certificate issues</text>
+          <text x="256" y="149" style="fill: var(--ink-faint)">HTTP-01 challenge needs a live A/CNAME record</text>
+
+          <text x="0" y="188" style="fill: var(--accent)" font-weight="600">Phase 08</text>
+          <text x="0" y="203" style="fill: var(--ink-mute)">Atlas allowlist</text>
+          <text x="256" y="188" style="fill: var(--ink)" font-weight="500">Pods reach Running</text>
+          <text x="256" y="203" style="fill: var(--ink-faint)">else CrashLoopBackOff on Mongo connect</text>
+        </g>
+      </svg>
+      <figcaption>Four hard orderings. Everything else can slip; these cannot. Each one caused a documented failure last time, which is why the phases below are numbered rather than merely listed.</figcaption>
+    </figure>
+
+    <!-- ============ PHASE 00 ============ -->
+    <section class="phase" id="p0">
+      <div class="phase-head">
+        <div class="phase-num">00</div>
+        <div>
+          <h2>New laptop bootstrap</h2>
+          <div class="phase-meta">15 min &middot; fresh machine</div>
+        </div>
+      </div>
+
+      <div class="note tip">
+        <span class="note-label">Verified on this machine</span>
+        <p><code>brew</code>, <code>git</code>, <code>kubectl</code>, <code>docker</code> (daemon running), <code>node</code>, and <code>npm</code> are already installed. <strong>Missing:</strong> <code>aws</code>, <code>eksctl</code>, <code>helm</code>, <code>gh</code>.</p>
+      </div>
+
+      <h3>0.1 &nbsp;Homebrew</h3>
+      <p>Already present here. On a truly bare Mac:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">homebrew</span><button class="copy">copy</button></div><pre>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre></div>
+      <p>Then follow the &ldquo;Next steps&rdquo; it prints to put <code>brew</code> on your <code>PATH</code> &mdash; on Apple Silicon that means <code>eval "$(/opt/homebrew/bin/brew shellenv)"</code> in <code>~/.zprofile</code>.</p>
+
+      <h3>0.2 &nbsp;Install what&rsquo;s missing</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">install</span><button class="copy">copy</button></div><pre>brew install awscli eksctl helm gh</pre></div>
+      <p>If <code>brew install eksctl</code> fails, use the official tap:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">fallback</span><button class="copy">copy</button></div><pre>brew tap eksctl-io/eksctl &amp;&amp; brew install eksctl-io/tap/eksctl</pre></div>
+
+      <h3>0.3 &nbsp;Docker must be running, not just installed</h3>
+      <p>CI builds the image, so Docker is not strictly required for the deploy &mdash; but it is for any local build or debugging. Confirm the daemon, not just the binary:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">daemon check</span><button class="copy">copy</button></div><pre>docker info &gt; /dev/null 2&gt;&amp;1 &amp;&amp; echo "daemon running" || echo "start Docker Desktop"</pre></div>
+
+      <h3>0.4 &nbsp;Git identity and GitHub auth</h3>
+      <p>You push to <code>feature/scaling</code> to trigger the deploy (Phase 12), so this has to work:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">git + gh</span><button class="copy">copy</button></div><pre>git config --global user.name  "Amritesh Indal"
+git config --global user.email "AIndal@mgocpa.com"
+
+gh auth login       <span class="c"># GitHub.com → SSH or HTTPS → browser</span>
+gh auth status</pre></div>
+      <p>Confirm the clone is wired to the right remote and branch:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">repo state</span><button class="copy">copy</button></div><pre>cd /Users/amriteshindal/Amritesh/JOMOBIT/jomobit-backend
+git remote -v                <span class="c"># expect git@github.com:looper12349/jomobit-backend.git</span>
+git branch --show-current    <span class="c"># expect feature/scaling</span>
+git fetch origin &amp;&amp; git status -sb</pre></div>
+
+      <h3>0.5 &nbsp;Verify everything</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>for t in brew git aws kubectl eksctl helm docker gh node npm; do
+  printf "%-9s %s\n" "$t" "$(command -v $t || echo MISSING)"
+done</pre></div>
+      <p>All ten should resolve to a path before you continue.</p>
+      <label class="chk"><input type="checkbox" data-p="0"><span>Phase 00 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 01 ============ -->
+    <section class="phase" id="p1">
+      <div class="phase-head">
+        <div class="phase-num">01</div>
+        <div>
+          <h2>AWS account &amp; IAM</h2>
+          <div class="phase-meta">20 min &middot; first real gate</div>
+        </div>
+      </div>
+      <p>Nothing else in this runbook works until you have a working IAM identity and a configured CLI profile.</p>
+
+      <h3>1.1 &nbsp;Secure the root account</h3>
+      <ol>
+        <li><strong>Enable MFA on the root user</strong> &mdash; IAM &rarr; Security credentials &rarr; Assign MFA device.</li>
+        <li><strong>Do not create access keys for root.</strong> If the account came with any, delete them.</li>
+        <li>Set the alternate contacts and confirm the billing email is one you actually read.</li>
+      </ol>
+
+      <h3>1.2 &nbsp;Create your admin IAM user</h3>
+      <p>IAM &rarr; Users &rarr; <strong>Create user</strong>:</p>
+      <ul>
+        <li>User name: <code>amritesh-admin</code></li>
+        <li>Tick <strong>Provide user access to the AWS Management Console</strong>, so you have a non-root console login</li>
+        <li>Permissions &rarr; <strong>Attach policies directly</strong> &rarr; <code>AdministratorAccess</code></li>
+        <li>Create the user, then <strong>enable MFA on it too</strong></li>
+      </ul>
+
+      <h4>What access does this user actually need?</h4>
+      <p><code>eksctl create cluster</code> is not a small permission ask. It creates a VPC, six subnets, route tables, a NAT gateway, an internet gateway, security groups, the EKS control plane, a managed node group, an IAM OIDC provider, several IAM roles with attached policies, and instance profiles &mdash; all through CloudFormation.</p>
+      <div class="note tip">
+        <span class="note-label">Recommendation</span>
+        <p>Give this user <strong><code>AdministratorAccess</code></strong>. It is your own account and you are bootstrapping it from empty. Hand-crafting a least-privilege policy for <code>eksctl</code> is a well-known time sink, and the usual failure mode is a half-created CloudFormation stack you then unwind by hand.</p>
+        <p>Spend your least-privilege effort where it pays: <a href="#p9">the CI user in Phase 09</a>, which needs exactly one AWS permission. That is the credential that lives forever in GitHub and runs unattended.</p>
+      </div>
+      <p>If you still want this bootstrap user scoped, attach these:</p>
+      <div class="tw"><table>
+        <thead><tr><th>Policy</th><th>Covers</th></tr></thead>
+        <tbody>
+          <tr><td><code>AWSCloudFormationFullAccess</code></td><td>eksctl drives everything through CFN stacks</td></tr>
+          <tr><td><code>AmazonEC2FullAccess</code></td><td>VPC, subnets, route tables, NAT/IGW, SGs, instances, volumes</td></tr>
+          <tr><td><code>IAMFullAccess</code></td><td>cluster and node roles, instance profiles, the OIDC provider</td></tr>
+          <tr><td><code>AmazonEKSClusterPolicy</code> + inline <code>eks:*</code></td><td>the EKS control plane and addons</td></tr>
+          <tr><td>inline <code>autoscaling:*</code>, <code>ssm:GetParameter</code></td><td>managed node group; SSM is the EKS AMI lookup</td></tr>
+        </tbody>
+      </table></div>
+      <p>This set is still broad, and the <code>ssm:GetParameter</code> requirement is easy to miss &mdash; without it, node group creation fails with an opaque AMI resolution error.</p>
+
+      <h3>1.3 &nbsp;Create an access key and configure the CLI</h3>
+      <p>On the new user: <strong>Security credentials &rarr; Create access key &rarr; Command Line Interface (CLI)</strong>.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">configure</span><button class="copy">copy</button></div><pre>aws configure --profile jomo
+<span class="c"># AWS Access Key ID     : &lt;the key you just created&gt;</span>
+<span class="c"># AWS Secret Access Key : &lt;the secret — shown only once&gt;</span>
+<span class="c"># Default region name   : ap-south-1</span>
+<span class="c"># Default output format : json</span></pre></div>
+      <div class="note warn">
+        <span class="note-label">Every command below assumes these two exports</span>
+        <p>Re-run them in any new terminal, or put them in <code>~/.zshrc</code> while this deploy is in progress.</p>
+        <div class="term" style="margin:10px 0 0"><div class="term-bar"><span class="term-label">shell env</span><button class="copy">copy</button></div><pre>export AWS_PROFILE=jomo
+export AWS_REGION=ap-south-1</pre></div>
+      </div>
+
+      <h3>1.4 &nbsp;Verify, and save your account ID</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>aws sts get-caller-identity
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo "Account: $AWS_ACCOUNT_ID"</pre></div>
+      <p>The ARN should read <code>arn:aws:iam::&lt;account&gt;:user/amritesh-admin</code> &mdash; <strong>not</strong> <code>:root</code>. You reuse <code>$AWS_ACCOUNT_ID</code> in Phase 09.</p>
+
+      <h3>1.5 &nbsp;Check service quotas</h3>
+      <p>Brand-new accounts ship with low limits that stall cluster creation with unhelpful errors.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">quotas</span><button class="copy">copy</button></div><pre><span class="c"># Elastic IPs — need >= 1 for the NAT gateway (default 5)</span>
+aws service-quotas get-service-quota \
+  --service-code ec2 --quota-code L-0263D0A3 --region ap-south-1 \
+  --query 'Quota.[QuotaName,Value]' --output text
+
+<span class="c"># On-Demand Standard vCPUs — need >= 4 for two t3.medium</span>
+aws service-quotas get-service-quota \
+  --service-code ec2 --quota-code L-1216C47A --region ap-south-1 \
+  --query 'Quota.[QuotaName,Value]' --output text</pre></div>
+      <p>If either is short, request an increase now &mdash; approval can take hours.</p>
+
+      <h3>1.6 &nbsp;Set a budget alarm</h3>
+      <p>This stack runs roughly <strong>$190&ndash;230/month</strong> (<a href="#apxa">Appendix A</a>). Billing &rarr; Budgets &rarr; Create budget &rarr; Cost budget &rarr; monthly $250, alert at 80% and 100%.</p>
+      <label class="chk"><input type="checkbox" data-p="1"><span>Phase 01 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 02 ============ -->
+    <section class="phase" id="p2">
+      <div class="phase-head">
+        <div class="phase-num">02</div>
+        <div>
+          <h2>Preflight: verify what you inherited</h2>
+          <div class="phase-meta">15 min &middot; saves an hour later</div>
+        </div>
+      </div>
+      <p>Your <code>.env</code> came from a teammate, and your Docker Hub, Atlas, and GitHub access are unproven on this machine. Fifteen minutes here beats debugging a half-deployed cluster.</p>
+
+      <h3>2.1 &nbsp;Check the <code style="font-size:0.85em">.env</code> against the template</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">diff keys</span><button class="copy">copy</button></div><pre>cd /Users/amriteshindal/Amritesh/JOMOBIT/jomobit-backend
+
+comm -23 \
+  &lt;(grep -oE '^[A-Z0-9_]+=' .env.template | tr -d '=' | sort -u) \
+  &lt;(grep -oE '^[A-Z0-9_]+=' .env          | tr -d '=' | sort -u)</pre></div>
+      <p><strong>Already run for you.</strong> Four template keys are absent from your <code>.env</code>:</p>
+      <div class="tw"><table>
+        <thead><tr><th>Missing key</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td><code>ALLOWED_ORIGINS</code></td><td><strong style="color:var(--danger)">Must be fixed</strong> &mdash; see 2.2</td></tr>
+          <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td>Fine &mdash; the app has no AWS SDK; see <a href="#p10">Phase 10.3</a></td></tr>
+          <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td>Fine &mdash; same reason</td></tr>
+          <tr><td><code>AWS_REGION</code></td><td>Fine &mdash; harmless either way</td></tr>
+        </tbody>
+      </table></div>
+      <p>The ImageKit keys are <strong>real</strong>, not placeholders &mdash; <code>public_</code> and <code>private_</code> are ImageKit&rsquo;s own key prefixes.</p>
+
+      <h3>2.2 &nbsp;ALLOWED_ORIGINS is missing and it will break CORS</h3>
+      <p><code>src/config/security.js:90</code> and <code>src/app.js:64</code> both do this:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">src/config/security.js</span><button class="copy">copy</button></div><pre>const allowedOrigins = (process.env.ALLOWED_ORIGINS
+  || 'http://localhost:3000,http://localhost:3001').split(',');
+if (allowedOrigins.includes(origin)) { <span class="c">/* allow */</span> }
+else { <span class="c">/* block + log */</span> }</pre></div>
+      <div class="note stop">
+        <span class="note-label">Fails silently, in the browser only</span>
+        <p>The fallback is <strong>localhost only</strong>, so every browser request from your real frontend is CORS-blocked on the deployed API. The pod stays healthy and <code>curl</code> works fine &mdash; which makes this a nasty one to chase.</p>
+        <p><code>src/config/security.js:378</code> logs a startup warning in production, but it is a warning, not a fatal &mdash; nothing stops the deploy.</p>
+      </div>
+      <p>Set it in <strong>both</strong> places &mdash; your local <code>.env</code> and the <code>ALLOWED_ORIGINS</code> GitHub secret (Phase 10):</p>
+      <div class="term"><div class="term-bar"><span class="term-label">local .env</span><button class="copy">copy</button></div><pre><span class="c"># adjust to your actual frontend origin(s)</span>
+echo 'ALLOWED_ORIGINS=https://api-dev.amritesh.dev,http://localhost:8081' &gt;&gt; .env</pre></div>
+      <p>The match is <strong>exact string equality</strong>, so:</p>
+      <ul>
+        <li><strong>No trailing slash.</strong> <code>https://foo.com/</code> will not match <code>https://foo.com</code>.</li>
+        <li><strong>Scheme must match.</strong> <code>http://</code> and <code>https://</code> are different origins.</li>
+        <li><strong>Port is part of the origin.</strong> <code>localhost:8081</code> &ne; <code>localhost:3000</code>.</li>
+        <li><strong>No spaces after commas</strong> &mdash; the value is <code>.split(',')</code> with no trimming, so <code>a, b</code> yields a literal <code>" b"</code> that never matches.</li>
+      </ul>
+
+      <h3>2.3 &nbsp;Confirm Docker Hub push access</h3>
+      <p>The workflow pushes to <code>ai29/jomo-backend</code>. On a new account you may not control that namespace.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">docker hub</span><button class="copy">copy</button></div><pre>docker login                     <span class="c"># must own or have write access to `ai29`</span>
+docker pull ai29/jomo-backend:latest || echo "repo missing or no access"</pre></div>
+      <p>Then create a Docker Hub <strong>access token</strong> (Account Settings &rarr; Personal access tokens) for <code>DOCKERHUB_TOKEN</code> in Phase 10 &mdash; not your account password.</p>
+      <div class="note">
+        <span class="note-label">If you don&rsquo;t control ai29</span>
+        <p>Change <code>DOCKER_IMAGE</code> in <code>.github/workflows/cicd.yml</code> to a namespace you own, e.g. <code>youruser/jomo-backend</code>. It appears once, in the <code>env:</code> block at the top.</p>
+      </div>
+
+      <h3>2.4 &nbsp;Confirm MongoDB Atlas access</h3>
+      <p>You edit the IP allowlist in Phase 08, which needs a working Atlas login.</p>
+      <ul>
+        <li>Sign in at cloud.mongodb.com and confirm you can reach the project holding <code>jomobit.svtjsyk.mongodb.net</code></li>
+        <li>Confirm the cluster is <strong>not paused</strong> &mdash; free and shared tiers auto-pause after 60 days idle</li>
+        <li>Confirm the database user in your <code>MONGODB_URI</code> still exists with a current password</li>
+      </ul>
+      <p>If your teammate owns the Atlas project, get invited as a Project Owner <em>now</em> rather than at Phase 08.</p>
+
+      <h3>2.5 &nbsp;Inventory the third-party credentials</h3>
+      <p>Every secret in Phase 10 comes from your <code>.env</code> &mdash; but a <code>.env</code> from a teammate may hold <em>their</em> dev keys. Decide per service whether you are sharing or rotating: Auth0, Razorpay, OpenAI, Gemini, Ideogram, FAL, ImageKit, Slack, n8n. Rotating later is fine; knowing which are shared is not optional.</p>
+      <label class="chk"><input type="checkbox" data-p="2"><span>Phase 02 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 03 ============ -->
+    <section class="phase" id="p3">
+      <div class="phase-head">
+        <div class="phase-num">03</div>
+        <div>
+          <h2>Create the EKS cluster</h2>
+          <div class="phase-meta">20 min &middot; mostly waiting</div>
+        </div>
+      </div>
+
+      <h3>2.1 &nbsp;Write the cluster config</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">infra/cluster.yaml</span><button class="copy">copy</button></div><pre>cd /Users/amriteshindal/Amritesh/JOMOBIT/jomobit-backend
+mkdir -p infra
+cat &gt; infra/cluster.yaml &lt;&lt;'EOF'
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: 4-jomo-cluster
+  region: ap-south-1
+  version: "1.31"
+
+<span class="c"># API auth mode lets us grant the CI user cluster access via EKS Access</span>
+<span class="c"># Entries (Phase 09) instead of hand-editing the aws-auth ConfigMap.</span>
+accessConfig:
+  authenticationMode: API_AND_CONFIG_MAP
+
+iam:
+  withOIDC: true
+
+<span class="c"># aws-ebs-csi-driver is REQUIRED: without it the Prometheus and</span>
+<span class="c"># Grafana PVCs stay Pending forever.</span>
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+
+managedNodeGroups:
+  - name: ng-general
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    volumeSize: 30
+    volumeType: gp3
+    <span class="c"># Private nodes egress through a single NAT gateway = ONE stable</span>
+    <span class="c"># public IP, which is what makes the Atlas allowlist in Phase 08 work.</span>
+    privateNetworking: true
+    labels:
+      role: general
+    tags:
+      Project: jomobit
+      Environment: shared
+EOF</pre></div>
+
+      <h3>2.2 &nbsp;Create it</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">create &middot; 15–20 min</span><button class="copy">copy</button></div><pre>eksctl create cluster -f infra/cluster.yaml</pre></div>
+      <div class="note warn">
+        <span class="note-label">If it fails partway</span>
+        <p>Don&rsquo;t just re-run &mdash; you&rsquo;ll hit a name conflict on the existing CloudFormation stack. Delete first with <code>eksctl delete cluster -f infra/cluster.yaml --wait</code>, then check the CloudFormation console for leftover <code>eksctl-4-jomo-cluster-*</code> stacks stuck in <code>DELETE_FAILED</code>. Permission errors here usually trace back to a scoped-down Phase 1.2 user.</p>
+      </div>
+      <p>This provisions a VPC, three public and three private subnets, one NAT gateway, the EKS control plane, and the managed node group.</p>
+
+      <h3>2.3 &nbsp;Verify</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>aws eks update-kubeconfig --region ap-south-1 --name 4-jomo-cluster
+kubectl get nodes -o wide
+kubectl get pods -A</pre></div>
+      <p>You want <strong>2 nodes <code>Ready</code></strong> and everything in <code>kube-system</code> <code>Running</code>.</p>
+      <label class="chk"><input type="checkbox" data-p="3"><span>Phase 03 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 04 ============ -->
+    <section class="phase" id="p4">
+      <div class="phase-head">
+        <div class="phase-num">04</div>
+        <div>
+          <h2>StorageClass <code style="font-size:0.8em">gp2</code></h2>
+          <div class="phase-meta">2 min &middot; blocks monitoring PVCs</div>
+        </div>
+      </div>
+      <p>Both <code>k8s/monitoring/prometheus-pvc.yaml</code> and <code>grafana-pvc.yaml</code> hardcode <code>storageClassName: gp2</code>. Check what EKS gave you:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">check</span><button class="copy">copy</button></div><pre>kubectl get storageclass</pre></div>
+      <p>If a <code>gp2</code> class exists, skip ahead. If it does not &mdash; or you would rather use faster, cheaper gp3 volumes &mdash; create one <em>named</em> <code>gp2</code> so the manifests keep working unchanged:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">apply</span><button class="copy">copy</button></div><pre>kubectl apply -f - &lt;&lt;'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: gp3
+  encrypted: "true"
+EOF</pre></div>
+      <div class="note tip">
+        <span class="note-label">If gp2 already existed</span>
+        <p>It may not be marked default. Patch it:</p>
+        <div class="term" style="margin-bottom:0"><div class="term-bar"><span class="term-label">patch</span><button class="copy">copy</button></div><pre>kubectl patch storageclass gp2 -p \
+  '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'</pre></div>
+      </div>
+      <p>Confirm the CSI driver is actually running &mdash; this is what caused the &ldquo;PVCs Pending&rdquo; problem recorded in <code>TROUBLESHOOTING-PODS-PENDING.md</code>:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-ebs-csi-driver</pre></div>
+      <label class="chk"><input type="checkbox" data-p="4"><span>Phase 04 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 05 ============ -->
+    <section class="phase" id="p5">
+      <div class="phase-head">
+        <div class="phase-num">05</div>
+        <div>
+          <h2>metrics-server</h2>
+          <div class="phase-meta">5 min &middot; required for HPA only</div>
+        </div>
+      </div>
+      <p><code>k8s/hpa.yaml</code> scales on CPU utilization, which needs metrics-server. <strong>EKS does not ship it</strong>, and nothing in this repo installs it &mdash; so this was almost certainly a gap in the old setup too.</p>
+      <div class="note tip">
+        <span class="note-label">Not on the critical path</span>
+        <p>metrics-server is only needed by the HPA in Phase 14.1. The app deploy, ingress, TLS, and the whole monitoring stack work without it &mdash; Prometheus scrapes the app&rsquo;s own <code>/metrics</code> endpoint and never touches the Metrics API. If this phase fights you, move on to Phase 06 and come back.</p>
+      </div>
+
+      <h3>5.1 &nbsp;Check whether something already installed it</h3>
+      <p>Do this <strong>before</strong> applying anything. A pre-existing install makes <code>kubectl apply</code> of the upstream manifest impossible to reconcile (see 5.4).</p>
+      <div class="term"><div class="term-bar"><span class="term-label">check first</span><button class="copy">copy</button></div><pre>kubectl get deployment metrics-server -n kube-system 2&gt;/dev/null \
+  &amp;&amp; echo "ALREADY PRESENT — read 5.4 first"
+helm list -A | grep -i metrics
+aws eks list-addons --cluster-name 4-jomo-cluster --query 'addons' --output text</pre></div>
+
+      <h3>5.2 &nbsp;Preferred: the EKS managed addon</h3>
+      <p>On EKS this is the cleanest option &mdash; AWS maintains the version and the kubelet wiring.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">eks addon</span><button class="copy">copy</button></div><pre><span class="c"># Confirm it's offered for your cluster version</span>
+aws eks describe-addon-versions --addon-name metrics-server \
+  --kubernetes-version 1.31 \
+  --query 'addons[].addonVersions[].addonVersion' --output text
+
+aws eks create-addon --cluster-name 4-jomo-cluster --addon-name metrics-server
+aws eks wait addon-active --cluster-name 4-jomo-cluster --addon-name metrics-server</pre></div>
+
+      <h3>5.3 &nbsp;Alternative: the upstream manifest, pinned</h3>
+      <div class="note warn">
+        <span class="note-label">Never use /latest/download/</span>
+        <p>An unpinned URL means you cannot reproduce what you installed, and it changes under you between runs. Pin the release.</p>
+      </div>
+      <div class="term"><div class="term-bar"><span class="term-label">pinned manifest</span><button class="copy">copy</button></div><pre>kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+kubectl -n kube-system rollout status deployment/metrics-server --timeout=120s</pre></div>
+
+      <h3>5.4 &nbsp;If a conflicting install already exists</h3>
+      <p>Applying the upstream manifest over a metrics-server installed by Helm or as an EKS addon <strong>fails and cannot be forced</strong>:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">the error you get</span><button class="copy">copy</button></div><pre><span class="c">Warning: resource deployments/metrics-server is missing the</span>
+<span class="c">kubectl.kubernetes.io/last-applied-configuration annotation</span>
+The Deployment "metrics-server" is invalid:
+* spec.template.spec.containers[0].ports[1].name: Duplicate value: "https"
+* spec.selector: ... field is immutable</pre></div>
+      <p>Read those two errors precisely:</p>
+      <ul>
+        <li><strong><code>spec.selector</code> is immutable.</strong> A Deployment&rsquo;s selector can never be patched. A Helm-installed metrics-server uses <code>app.kubernetes.io/instance</code> + <code>app.kubernetes.io/name</code> + <code>k8s-app</code>; upstream uses only <code>k8s-app</code>. They cannot be merged.</li>
+        <li><strong>Duplicate port name <code>https</code>.</strong> Strategic-merge patch keys container ports by <code>containerPort</code>, so an existing port on a different number that is also named <code>https</code> merges into a second entry sharing one name.</li>
+      </ul>
+      <div class="note">
+        <span class="note-label">Misleading detail</span>
+        <p><code>deployment "metrics-server" successfully rolled out</code> may still print at the end. That is the <em>pre-existing</em> deployment reporting itself complete &mdash; the apply was rejected and nothing changed.</p>
+      </div>
+      <p><strong>Fix &mdash; pick one owner and remove the other.</strong> If Helm owns it, uninstall through Helm:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">helm-owned</span><button class="copy">copy</button></div><pre>helm uninstall &lt;release-name&gt; -n &lt;namespace&gt;</pre></div>
+      <p>Otherwise delete the orphaned objects, then reinstall via 5.2 or 5.3:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">clean removal</span><button class="copy">copy</button></div><pre>kubectl delete apiservice v1beta1.metrics.k8s.io --ignore-not-found
+kubectl delete deployment,service,serviceaccount metrics-server -n kube-system --ignore-not-found
+kubectl delete clusterrole system:aggregated-metrics-reader system:metrics-server --ignore-not-found
+kubectl delete clusterrolebinding metrics-server:system:auth-delegator system:metrics-server --ignore-not-found
+kubectl delete rolebinding metrics-server-auth-reader -n kube-system --ignore-not-found</pre></div>
+
+      <h3>5.5 &nbsp;Verify</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>kubectl top nodes</pre></div>
+      <p><code>error: Metrics API not available</code> means the aggregated API is not serving. Find out why:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">diagnose</span><button class="copy">copy</button></div><pre>kubectl get apiservice v1beta1.metrics.k8s.io \
+  -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}'
+
+kubectl get pods -n kube-system | grep metrics-server
+kubectl logs -n kube-system -l k8s-app=metrics-server --tail=40</pre></div>
+      <p>If the logs show <code>x509</code> or certificate errors, metrics-server is rejecting the kubelet&rsquo;s serving cert. Add the insecure-TLS flag &mdash; <strong>only</strong> if you actually see those errors:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">kubelet tls</span><button class="copy">copy</button></div><pre>kubectl patch deployment metrics-server -n kube-system --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl -n kube-system rollout status deployment/metrics-server --timeout=120s</pre></div>
+      <p>Give it 30&ndash;60 seconds after the pod is ready &mdash; <code>kubectl top nodes</code> needs one scrape interval before it returns numbers.</p>
+      <label class="chk"><input type="checkbox" data-p="5"><span>Phase 05 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 06 ============ -->
+    <section class="phase" id="p6">
+      <div class="phase-head">
+        <div class="phase-num">06</div>
+        <div>
+          <h2>ingress-nginx controller</h2>
+          <div class="phase-meta">5 min &middot; creates the load balancer</div>
+        </div>
+      </div>
+      <p>Every ingress in <code>k8s/</code> sets <code>ingressClassName: nginx</code>, and cert-manager&rsquo;s HTTP-01 solver is configured for <code>class: nginx</code>. Nothing works without this controller.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">helm install</span><button class="copy">copy</button></div><pre>helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
+  --set controller.config.use-forwarded-headers="true" \
+  --set controller.config.proxy-body-size=10m \
+  --wait --timeout 10m</pre></div>
+      <div class="note">
+        <span class="note-label">Why use-forwarded-headers</span>
+        <p>The app calls <code>this.app.set('trust proxy', 1)</code> (<code>src/app.js:38</code>) and rate-limits per client IP. Without forwarded headers every request appears to come from the load balancer and rate limiting collapses onto a single bucket.</p>
+      </div>
+
+      <h3>Get the load balancer hostname</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">capture</span><button class="copy">copy</button></div><pre>export LB_HOST=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+echo "LB: $LB_HOST"</pre></div>
+      <p>Wait 2&ndash;3 minutes and retry if it comes back empty.</p>
+      <label class="chk"><input type="checkbox" data-p="6"><span>Phase 06 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 07 ============ -->
+    <section class="phase" id="p7">
+      <div class="phase-head">
+        <div class="phase-num">07</div>
+        <div>
+          <h2>DNS on amritesh.dev</h2>
+          <div class="phase-meta">15 min + propagation &middot; blocks TLS</div>
+        </div>
+      </div>
+      <p>Two jobs here: repoint the repo&rsquo;s manifests at your new domain, then create the DNS record. Both must be done before Phase 12, because cert-manager cannot issue a certificate for a host that does not resolve.</p>
+
+      <h3>7.1 &nbsp;Pick the hostnames</h3>
+      <p>Mirroring the repo&rsquo;s existing staging/production split:</p>
+      <div class="tw"><table>
+        <thead><tr><th>Environment</th><th>Hostname</th><th>Manifest</th></tr></thead>
+        <tbody>
+          <tr><td>staging</td><td><code>api-dev.amritesh.dev</code></td><td><code>k8s/staging-ingress.yaml</code></td></tr>
+          <tr><td>production</td><td><code>api.amritesh.dev</code></td><td><code>k8s/production-ingress.yaml</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Substitute your own subdomains if you prefer &mdash; they appear in exactly the places listed in 7.2, nowhere else.</p>
+
+      <h3>7.2 &nbsp;Point the manifests at your domain</h3>
+      <p><strong>These three files are the ones CI actually applies.</strong> Everything else in <code>k8s/</code> with a hostname in it is legacy and never reaches the cluster.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">required edits</span><button class="copy">copy</button></div><pre>cd /Users/amriteshindal/Amritesh/JOMOBIT/jomobit-backend
+
+<span class="c"># 1. Staging ingress — host + TLS SAN</span>
+sed -i '' 's/api-dev-jomo\.dazzeldigital\.com/api-dev.amritesh.dev/g' k8s/staging-ingress.yaml
+
+<span class="c"># 2. Production ingress — host + TLS SAN</span>
+sed -i '' 's/api\.jomo\.dazzeldigital\.com/api.amritesh.dev/g' k8s/production-ingress.yaml
+
+<span class="c"># 3. URLs the workflow prints after a deploy (cosmetic, but keep them honest)</span>
+sed -i '' 's/api-dev-jomo\.dazzeldigital\.com/api-dev.amritesh.dev/g;
+           s/api\.jomo\.dazzeldigital\.com/api.amritesh.dev/g' .github/workflows/cicd.yml</pre></div>
+      <p><strong>Also required for <code>.dev</code></strong> &mdash; flip the staging redirect (see 7.4 for why):</p>
+      <div class="term"><div class="term-bar"><span class="term-label">ssl-redirect</span><button class="copy">copy</button></div><pre>sed -i '' 's/ssl-redirect: "false"/ssl-redirect: "true"/' k8s/staging-ingress.yaml</pre></div>
+      <p><code>k8s/production-ingress.yaml</code> already has <code>ssl-redirect: "true"</code>.</p>
+
+      <h4>Optional: the legacy files</h4>
+      <p>Not applied by CI &mdash; <code>k8s/ingress.yaml</code>, <code>k8s/ingress-staging-combined.yaml</code>, <code>k8s/monitoring/ingress-staging.yaml</code>, <code>k8s/monitoring/ingress-prod.yaml</code>, <code>k8s/configmap.yaml</code>, <code>k8s/secrets.yaml</code>. Update them so nobody applies a stale host by hand later:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">legacy sweep</span><button class="copy">copy</button></div><pre>sed -i '' 's/api-dev-jomo\.dazzeldigital\.com/api-dev.amritesh.dev/g;
+           s/api\.jomo\.dazzeldigital\.com/api.amritesh.dev/g;
+           s/jomo\.dazzeldigital\.com/jomo.amritesh.dev/g' \
+  k8s/ingress.yaml k8s/ingress-staging-combined.yaml \
+  k8s/monitoring/ingress-staging.yaml k8s/monitoring/ingress-prod.yaml \
+  k8s/configmap.yaml k8s/secrets.yaml .env.template</pre></div>
+      <div class="term"><div class="term-bar"><span class="term-label">confirm</span><button class="copy">copy</button></div><pre>grep -rn "dazzeldigital" k8s/ .github/ .env.template</pre></div>
+      <p>Only <code>k8s/cert-manager-issuer.yaml</code> should still match &mdash; that is the Let&rsquo;s Encrypt contact address, handled in Phase 11.</p>
+      <div class="note stop">
+        <span class="note-label">Do not change AUTH0_AUDIENCE to match the new domain</span>
+        <p>It is an opaque API <em>identifier</em> in Auth0, not a URL that anything fetches. Changing it here without also changing the API Identifier in the Auth0 dashboard breaks every token immediately. Leave it exactly as your <code>.env</code> has it.</p>
+      </div>
+
+      <h3>7.3 &nbsp;Create the DNS record</h3>
+      <p>Pick the option that matches where you want DNS to live.</p>
+
+      <div class="note tip">
+        <span class="note-label">Checked for you</span>
+        <p><code>amritesh.dev</code> is registered at <strong>Name.com</strong> and its nameservers are already live there (<code>ns1kpv</code>, <code>ns2fln</code>, <code>ns3fgh</code>, <code>ns4kmw</code><code>.name.com</code>). <code>api-dev.amritesh.dev</code> does not resolve yet. That makes <strong>Option A your fast path</strong> &mdash; no nameserver change, no delegation wait, no extra cost.</p>
+      </div>
+
+      <h4>Option A &mdash; Name.com, where your DNS already lives &nbsp;<span style="font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)">recommended</span></h4>
+      <p>Because the nameservers already point at Name.com and are serving, you only need to add one record. Propagation is just the record&rsquo;s TTL &mdash; minutes, not days.</p>
+      <ol>
+        <li>Sign in at name.com &rarr; <strong>My Domains</strong> &rarr; <code>amritesh.dev</code> &rarr; <strong>DNS Records</strong></li>
+        <li><strong>Add Record</strong>, using Name.com&rsquo;s own field names (below)</li>
+        <li>Save</li>
+      </ol>
+      <div class="tw"><table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Type</td><td><code>CNAME</code></td></tr>
+          <tr><td>Host</td><td><code>api-dev</code></td></tr>
+          <tr><td>Answer</td><td>your <code>$LB_HOST</code> (the full <code>&hellip;elb.ap-south-1.amazonaws.com</code> hostname)</td></tr>
+          <tr><td>TTL</td><td><code>300</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Print the value to paste into &ldquo;Answer&rdquo;:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">get $LB_HOST</span><button class="copy">copy</button></div><pre>echo $LB_HOST
+<span class="c"># empty? re-export it from Phase 06:</span>
+export LB_HOST=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+echo $LB_HOST</pre></div>
+      <div class="note warn">
+        <span class="note-label">Host field takes the subdomain only</span>
+        <p>Enter <code>api-dev</code>, not the full <code>api-dev.amritesh.dev</code> &mdash; Name.com appends the domain for you. Entering the full name creates <code>api-dev.amritesh.dev.amritesh.dev</code>.</p>
+      </div>
+
+      <h4>Option B &mdash; Route 53, if you want AWS-managed DNS</h4>
+      <p>Only worth it if you want the whole zone under AWS (CLI management, ALIAS records, Terraform later). It costs <strong>$0.50/month</strong> and requires changing nameservers at Name.com, which reintroduces a delegation wait.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">hosted zone</span><button class="copy">copy</button></div><pre>aws route53 create-hosted-zone \
+  --name amritesh.dev \
+  --caller-reference "amritesh-dev-$(date +%s)" \
+  --hosted-zone-config Comment="jomobit API"
+
+export HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+  --dns-name amritesh.dev --query 'HostedZones[0].Id' --output text | cut -d/ -f3)
+
+<span class="c"># The four nameservers to set at Name.com, replacing the ns*.name.com ones</span>
+aws route53 get-hosted-zone --id $HOSTED_ZONE_ID \
+  --query 'DelegationSet.NameServers' --output table</pre></div>
+      <p>Set those four at Name.com (<strong>My Domains &rarr; amritesh.dev &rarr; Nameservers</strong>), wait for <code>dig +short NS amritesh.dev</code> to return them, then add the record. An ALIAS A-record beats a CNAME &mdash; no extra lookup, and it works at a zone apex:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">alias record</span><button class="copy">copy</button></div><pre><span class="c"># ZVDDDACTLDPK0 is the NLB hosted-zone ID for ap-south-1</span>
+aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch "{
+  \"Changes\": [{
+    \"Action\": \"UPSERT\",
+    \"ResourceRecordSet\": {
+      \"Name\": \"api-dev.amritesh.dev\",
+      \"Type\": \"A\",
+      \"AliasTarget\": {
+        \"HostedZoneId\": \"ZVDDDACTLDPK0\",
+        \"DNSName\": \"dualstack.$LB_HOST\",
+        \"EvaluateTargetHealth\": true
+      }
+    }
+  }]
+}"</pre></div>
+      <div class="note stop">
+        <span class="note-label">Don&rsquo;t half-migrate</span>
+        <p>If you create the Route 53 zone but leave the Name.com nameservers in place, the zone is ignored and your records do nothing. Either switch the nameservers or use Option A &mdash; not both.</p>
+      </div>
+
+      <h4>Option C &mdash; Cloudflare</h4>
+      <p>If you move the domain onto Cloudflare DNS, it has one setting that will silently break things.</p>
+      <div class="tw"><table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Type</td><td><code>CNAME</code></td></tr>
+          <tr><td>Name</td><td><code>api-dev</code></td></tr>
+          <tr><td>Target</td><td>your <code>$LB_HOST</code></td></tr>
+          <tr><td>Proxy status</td><td><strong>DNS only (grey cloud)</strong> &mdash; <em>not</em> proxied</td></tr>
+          <tr><td>TTL</td><td>Auto</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note warn">
+        <span class="note-label">Turn the orange cloud off</span>
+        <p>With Cloudflare proxying enabled, Cloudflare terminates TLS and serves <em>its</em> certificate, so cert-manager&rsquo;s certificate never gets used and Let&rsquo;s Encrypt&rsquo;s HTTP-01 challenge may be intercepted. You would also need Cloudflare&rsquo;s SSL mode set to Full (strict) against an origin certificate you do not have yet. Grey cloud keeps the path direct to your NLB and lets cert-manager do its job.</p>
+      </div>
+
+      <h3>7.4 &nbsp;.dev is HSTS-preloaded &mdash; what that changes</h3>
+      <p>This is the one thing genuinely specific to your new domain. <strong>Google owns <code>.dev</code> and submitted the entire TLD to the HSTS preload list</strong>, which every major browser ships. Three consequences:</p>
+      <ol>
+        <li><strong>Browsers refuse plain HTTP to any <code>.dev</code> host.</strong> They rewrite <code>http://</code> to <code>https://</code> before a request leaves the machine. That is why <code>ssl-redirect: "false"</code> in the staging ingress is pointless on this domain &mdash; nothing will ever arrive over HTTP from a browser. Set it to <code>"true"</code> (7.2) so the redirect is at least consistent for non-browser clients.</li>
+        <li><strong>Let&rsquo;s Encrypt HTTP-01 still works.</strong> This is the part people panic about. The ACME validator is not a browser, does not consult the preload list, and reaches <code>http://api-dev.amritesh.dev/.well-known/acme-challenge/&hellip;</code> on port 80 normally. It also follows redirects to HTTPS and accepts an invalid certificate during validation, so <code>ssl-redirect: "true"</code> is safe. <strong>Do not switch to a DNS-01 solver</strong> &mdash; nothing here requires it.</li>
+        <li><strong>Don&rsquo;t test in a browser before the certificate exists.</strong> A browser hitting <code>http://api-dev.amritesh.dev</code> gets force-upgraded to HTTPS, finds no valid certificate yet, and shows a TLS error. That looks like broken DNS but is not. <strong>Use <code>curl</code> for pre-certificate checks</strong> &mdash; it ignores the preload list.</li>
+      </ol>
+
+      <h3>7.5 &nbsp;Verify</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre><span class="c"># Nameserver delegation actually took effect (new domains only)</span>
+dig +short NS amritesh.dev
+
+<span class="c"># The record resolves to your load balancer</span>
+dig +short api-dev.amritesh.dev
+
+<span class="c"># curl, NOT a browser — see 7.4</span>
+curl -I http://api-dev.amritesh.dev/api</pre></div>
+      <p>You should get a <code>404</code> from nginx. That means DNS resolves and the controller is answering &mdash; there is no backend yet, so 404 is the correct, expected result.</p>
+      <div class="note stop">
+        <span class="note-label">Timing depends on which option you took</span>
+        <p>With <strong>Option A</strong> the nameservers are already live, so you are only waiting on the record&rsquo;s 300s TTL &mdash; usually under a minute. With <strong>Option B or C</strong> you changed nameservers, and delegation can take minutes to 24&ndash;48 hours; <code>dig +short NS amritesh.dev</code> returning the new nameservers is the signal it is live.</p>
+        <p>Either way, <strong>wait for <code>dig +short api-dev.amritesh.dev</code> to return your load balancer before Phase 12</strong> &mdash; Let&rsquo;s Encrypt rate-limits failed validations, so a premature deploy costs you time you cannot get back.</p>
+      </div>
+      <label class="chk"><input type="checkbox" data-p="7"><span>Phase 07 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 08 ============ -->
+    <section class="phase" id="p8">
+      <div class="phase-head">
+        <div class="phase-num">08</div>
+        <div>
+          <h2>MongoDB Atlas IP allowlist</h2>
+          <div class="phase-meta">5 min &middot; blocks pod startup</div>
+        </div>
+      </div>
+      <div class="note stop">
+        <span class="note-label">Most-forgotten step</span>
+        <p>MongoDB is Atlas-hosted (<code>jomobit.svtjsyk.mongodb.net</code>), so your <strong>data survived</strong> the old AWS account. But Atlas still allowlists the <em>old</em> account&rsquo;s egress IPs, which no longer exist. Skip this and pods will <code>CrashLoopBackOff</code>.</p>
+      </div>
+
+      <h3>7.1 &nbsp;Get the new NAT gateway&rsquo;s public IP</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">nat ip</span><button class="copy">copy</button></div><pre>export VPC_ID=$(aws eks describe-cluster --name 4-jomo-cluster \
+  --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+
+aws ec2 describe-nat-gateways \
+  --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" \
+  --query 'NatGateways[].NatGatewayAddresses[].PublicIp' --output text</pre></div>
+
+      <h3>7.2 &nbsp;Add it in Atlas</h3>
+      <ol>
+        <li>cloud.mongodb.com &rarr; your project &rarr; <strong>Network Access</strong> &rarr; <strong>IP Access List</strong></li>
+        <li><strong>Add IP Address</strong> &rarr; <code>&lt;NAT_IP&gt;/32</code>, comment <code>EKS 4-jomo-cluster ap-south-1</code></li>
+        <li>Delete the stale entries from the dead AWS account</li>
+      </ol>
+
+      <h3>7.3 &nbsp;Also confirm</h3>
+      <ul>
+        <li>The Atlas cluster is still running &mdash; free and shared tiers auto-pause after 60 days idle</li>
+        <li>The database user <code>jomobitai</code> still exists and the password in your <code>MONGODB_URI</code> is current</li>
+      </ul>
+      <div class="note tip">
+        <span class="note-label">Redis is not required</span>
+        <p><code>REDIS_URL</code> in <code>.env</code> points at <code>redis://localhost:6379</code>, but <code>redisConnection.connect()</code> is commented out inside <code>connectDatabases()</code> (<code>src/app.js:321</code>). You do <strong>not</strong> need ElastiCache or an in-cluster Redis &mdash; set the <code>REDIS_URL</code> secret to any placeholder.</p>
+      </div>
+      <label class="chk"><input type="checkbox" data-p="8"><span>Phase 08 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 09 ============ -->
+    <section class="phase" id="p9">
+      <div class="phase-head">
+        <div class="phase-num">09</div>
+        <div>
+          <h2>IAM user for GitHub Actions</h2>
+          <div class="phase-meta">10 min</div>
+        </div>
+      </div>
+      <p>The workflow authenticates with a static access key via <code>aws-actions/configure-aws-credentials@v4</code>. Create a dedicated user with the narrowest possible AWS permission, then grant Kubernetes access separately.</p>
+
+      <h3>8.1 &nbsp;Create the user and a minimal policy</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">iam</span><button class="copy">copy</button></div><pre>aws iam create-user --user-name github-actions-jomo
+
+cat &gt; /tmp/gha-eks-policy.json &lt;&lt;EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["eks:DescribeCluster"],
+    "Resource": "arn:aws:eks:ap-south-1:${AWS_ACCOUNT_ID}:cluster/4-jomo-cluster"
+  }]
+}
+EOF
+
+aws iam put-user-policy --user-name github-actions-jomo \
+  --policy-name eks-describe-cluster \
+  --policy-document file:///tmp/gha-eks-policy.json
+
+aws iam create-access-key --user-name github-actions-jomo</pre></div>
+      <div class="note warn">
+        <span class="note-label">Shown once</span>
+        <p>Copy the <code>AccessKeyId</code> and <code>SecretAccessKey</code> from that last command now &mdash; the secret is never displayed again.</p>
+      </div>
+      <p><code>eks:DescribeCluster</code> is the <em>only</em> AWS permission needed. It lets <code>update-kubeconfig</code> build a kubeconfig; everything after that is Kubernetes RBAC, granted next.</p>
+
+      <h3>8.2 &nbsp;Grant Kubernetes access via an EKS Access Entry</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">access entry</span><button class="copy">copy</button></div><pre>export GHA_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:user/github-actions-jomo"
+
+aws eks create-access-entry \
+  --cluster-name 4-jomo-cluster \
+  --principal-arn "$GHA_ARN" \
+  --type STANDARD
+
+aws eks associate-access-policy \
+  --cluster-name 4-jomo-cluster \
+  --principal-arn "$GHA_ARN" \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+  --access-scope type=cluster</pre></div>
+      <p>Cluster-admin is genuinely needed here because the monitoring job installs cert-manager, ClusterIssuers, and ClusterRoles. Verify:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>aws eks list-access-entries --cluster-name 4-jomo-cluster</pre></div>
+      <div class="note">
+        <span class="note-label">Worth knowing</span>
+        <p>This static-key approach can be replaced with GitHub OIDC, which issues short-lived credentials and removes the long-lived secret from GitHub entirely. It means adding an IAM role with a trust policy for <code>token.actions.githubusercontent.com</code> and swapping the workflow&rsquo;s <code>aws-access-key-id</code> inputs for <code>role-to-assume</code>. Better posture, but it is a workflow change &mdash; out of scope for getting this deployed today.</p>
+      </div>
+      <label class="chk"><input type="checkbox" data-p="9"><span>Phase 09 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 10 ============ -->
+    <section class="phase" id="p10">
+      <div class="phase-head">
+        <div class="phase-num">10</div>
+        <div>
+          <h2>GitHub secrets &amp; environments</h2>
+          <div class="phase-meta">20 min &middot; 33 secrets</div>
+        </div>
+      </div>
+
+      <h3>9.1 &nbsp;Create the environments</h3>
+      <p>The <code>deploy</code> job declares <code>environment: name: staging|production</code>. Create both under <strong>Settings &rarr; Environments</strong>. Optionally add a required reviewer on <code>production</code>.</p>
+
+      <h3>9.2 &nbsp;Add the repository secrets</h3>
+      <p>Every value below is read by <code>.github/workflows/cicd.yml</code>. Anything not marked <span class="new">new</span> can be copied straight from your local <code>.env</code> &mdash; it is unrelated to AWS and survived the account loss.</p>
+
+      <h4>AWS &amp; registry &mdash; the ones that must change</h4>
+      <div class="tw"><table>
+        <thead><tr><th>Secret</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td><span class="new">new</span> from Phase 9.1 (the <strong>CI</strong> user, not your admin user)</td></tr>
+          <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td><span class="new">new</span> from Phase 9.1</td></tr>
+          <tr><td><code>AWS_REGION</code></td><td><code>ap-south-1</code></td></tr>
+          <tr><td><code>DOCKERHUB_USERNAME</code></td><td><span class="new">new</span> your Docker Hub user (Phase 2.3)</td></tr>
+          <tr><td><code>DOCKERHUB_TOKEN</code></td><td><span class="new">new</span> Docker Hub <strong>access token</strong>, not your password</td></tr>
+        </tbody>
+      </table></div>
+
+      <h4>App config</h4>
+      <div class="tw"><table>
+        <thead><tr><th>Secret</th><th>Suggested staging value</th></tr></thead>
+        <tbody>
+          <tr><td><code>FRONTEND_URL</code></td><td>your staging frontend URL</td></tr>
+          <tr><td><code>ALLOWED_ORIGINS</code></td><td><span class="new">new</span> <strong>absent from your <code>.env</code></strong> &mdash; see <a href="#p2">Phase 2.2</a></td></tr>
+          <tr><td><code>LOG_LEVEL</code></td><td><code>info</code></td></tr>
+          <tr><td><code>MONGODB_URI</code></td><td>from <code>.env</code> (Atlas)</td></tr>
+          <tr><td><code>REDIS_URL</code></td><td><code>redis://localhost:6379</code> &mdash; unused, see Phase 08</td></tr>
+        </tbody>
+      </table></div>
+
+      <h4>The rest, by group</h4>
+      <div class="tw"><table>
+        <thead><tr><th>Group</th><th>Secret names</th></tr></thead>
+        <tbody>
+          <tr><td>Auth0</td><td><code>AUTH0_DOMAIN</code>, <code>AUTH0_AUDIENCE</code>, <code>AUTH0_CLIENT_ID</code>, <code>AUTH0_CLIENT_SECRET</code>, <code>AUTH0_WEBHOOK_SECRET</code>, <code>AUTH0_ACTIONS_SECRET</code></td></tr>
+          <tr><td>Razorpay</td><td><code>RAZORPAY_KEY_ID</code>, <code>RAZORPAY_KEY_SECRET</code>, <code>RAZORPAY_WEBHOOK_SECRET</code></td></tr>
+          <tr><td>Credits</td><td><code>DEFAULT_USER_CREDITS</code> (<code>3</code>), <code>SUBSCRIPTION_RECONCILIATION_ENABLED</code> (<code>true</code>)</td></tr>
+          <tr><td>AI providers</td><td><code>OPENAI_API_KEY</code>, <code>GEMINI_API_KEY</code>, <code>IDEOGRAM_API_KEY</code>, <code>FAL_KEY</code></td></tr>
+          <tr><td>ImageKit</td><td><code>IMAGEKIT_PUBLIC_KEY</code>, <code>IMAGEKIT_PRIVATE_KEY</code>, <code>IMAGEKIT_URL_ENDPOINT</code></td></tr>
+          <tr><td>Webhooks</td><td><code>SLACK_WEBHOOK_URL</code>, <code>N8N_WEBHOOK_URL</code>, <code>N8N_JWT_SECRET</code>, <code>N8N_REQUEST_KEY</code>, <code>N8N_GENERATION_FLOW_ID</code>, <code>N8N_ENHANCEMENT_FLOW_ID</code></td></tr>
+          <tr><td>Monitoring</td><td><code>GRAFANA_ADMIN_PASSWORD</code> &mdash; defaults to <code>admin123</code> if unset</td></tr>
+        </tbody>
+      </table></div>
+
+      <p>Fast path with the <code>gh</code> CLI:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">gh secret set</span><button class="copy">copy</button></div><pre>gh secret set AWS_ACCESS_KEY_ID      --body "AKIA..."
+gh secret set AWS_SECRET_ACCESS_KEY  --body "..."
+gh secret set AWS_REGION             --body "ap-south-1"
+gh secret set GRAFANA_ADMIN_PASSWORD --body "$(openssl rand -base64 24)"
+<span class="c"># ...and so on. Then check nothing is missing:</span>
+gh secret list</pre></div>
+      <p>You can also bulk-load the non-AWS ones straight from <code>.env</code>:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">bulk &middot; review first</span><button class="copy">copy</button></div><pre><span class="c"># Review before running — this pushes every key in .env to GitHub</span>
+grep -E '^[A-Z0-9_]+=' .env \
+  | grep -vE '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|NODE_ENV|PORT)=' \
+  | while IFS='=' read -r k v; do
+      [ -n "$v" ] &amp;&amp; gh secret set "$k" --body "$v" &amp;&amp; echo "set $k"
+    done</pre></div>
+
+      <h3>9.3 &nbsp;Recommended fix: stop shipping AWS creds to the app</h3>
+      <div class="note stop">
+        <span class="note-label">Security &middot; your call</span>
+        <p>The workflow injects the <em>deploy</em> credentials into the application&rsquo;s runtime secret:</p>
+        <div class="term" style="margin:10px 0"><div class="term-bar"><span class="term-label">cicd.yml</span><button class="copy">copy</button></div><pre>--from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+--from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \</pre></div>
+        <p><strong>The app never uses them.</strong> There is no <code>aws-sdk</code> or <code>@aws-sdk</code> dependency in <code>package.json</code> and no AWS client anywhere in <code>src/</code>. This hands every backend pod &mdash; and anyone who can <code>kubectl exec</code> into one, or read a leaked log &mdash; credentials that are cluster-admin on your EKS cluster.</p>
+        <p>Delete those two lines from the &ldquo;Create/Update K8s Secret&rdquo; step. <code>AWS_REGION</code> is harmless and can stay. I have not made this change for you.</p>
+      </div>
+      <label class="chk"><input type="checkbox" data-p="10"><span>Phase 10 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 11 ============ -->
+    <section class="phase" id="p11">
+      <div class="phase-head">
+        <div class="phase-num">11</div>
+        <div>
+          <h2>cert-manager issuer email</h2>
+          <div class="phase-meta">1 min</div>
+        </div>
+      </div>
+      <p><code>k8s/cert-manager-issuer.yaml</code> uses <code>admin@dazzeldigital.com</code> for Let&rsquo;s Encrypt expiry notices, with a <code># Change this to your email</code> comment still in place. Confirm that address is real and monitored, or update it:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">edit</span><button class="copy">copy</button></div><pre>sed -i '' 's|admin@dazzeldigital.com|your-real@email.com|' k8s/cert-manager-issuer.yaml</pre></div>
+      <p>cert-manager itself is installed automatically by the <code>deploy-monitoring</code> job &mdash; no action needed.</p>
+      <label class="chk"><input type="checkbox" data-p="11"><span>Phase 11 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 12 ============ -->
+    <section class="phase" id="p12">
+      <div class="phase-head">
+        <div class="phase-num">12</div>
+        <div>
+          <h2>Deploy</h2>
+          <div class="phase-meta">10 min &middot; three sequential jobs</div>
+        </div>
+      </div>
+
+      <h3>Option A &mdash; push to feature/scaling &nbsp;<span style="font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)">recommended</span></h3>
+      <p>The workflow triggers on pushes to <code>feature/scaling</code> and routes them to the <code>staging</code> namespace with image tag <code>feature-scaling-&lt;short-sha&gt;</code>.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">push</span><button class="copy">copy</button></div><pre>cd /Users/amriteshindal/Amritesh/JOMOBIT/jomobit-backend
+git add infra/cluster.yaml DEPLOY-FRESH-AWS.md DEPLOY-FRESH-AWS.html k8s/cert-manager-issuer.yaml
+git commit -m "chore: add fresh-AWS cluster config and deployment runbook"
+git push origin feature/scaling</pre></div>
+      <div class="note stop">
+        <span class="note-label">Do not commit .env</span>
+        <p>Confirm it is ignored before you push &mdash; <code>git check-ignore -v .env</code> should print a matching rule from <code>.gitignore</code>. If it prints nothing, stop and add it.</p>
+      </div>
+      <p>Nothing to commit? Trigger with an empty commit:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">empty commit</span><button class="copy">copy</button></div><pre>git commit --allow-empty -m "chore: redeploy to fresh AWS account"
+git push origin feature/scaling</pre></div>
+
+      <h3>Option B &mdash; manual dispatch</h3>
+      <p><strong>Actions &rarr; CI/CD Pipeline &rarr; Run workflow</strong>, with environment <code>staging</code>, action <code>deploy</code>, and <code>image_tag</code> filled in explicitly.</p>
+      <div class="note warn">
+        <span class="note-label">Dispatch pitfall</span>
+        <p>Leave <code>image_tag</code> blank and the workflow falls back to <code>latest</code> (<code>[ -z "$IMAGE_TAG" ] &amp;&amp; IMAGE_TAG="latest"</code>). But <code>latest</code> is only ever tagged on the <strong>default branch</strong> (<code>enable={{is_default_branch}}</code>). On a fresh Docker Hub repo it will not exist and pods land in <code>ImagePullBackOff</code>. Pass a real tag such as <code>feature-scaling-c967026</code>.</p>
+      </div>
+
+      <h3>Watch it</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">watch</span><button class="copy">copy</button></div><pre>gh run watch
+<span class="c"># or: gh run list --limit 3</span></pre></div>
+      <p>Three jobs run in sequence: <strong>Build and Push Docker Image</strong> &rarr; <strong>Deploy to Kubernetes</strong> &rarr; <strong>Deploy Monitoring Stack</strong>. The monitoring job is slowest on a fresh cluster because it installs cert-manager from scratch.</p>
+      <label class="chk"><input type="checkbox" data-p="12"><span>Phase 12 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 13 ============ -->
+    <section class="phase" id="p13">
+      <div class="phase-head">
+        <div class="phase-num">13</div>
+        <div>
+          <h2>Verify</h2>
+          <div class="phase-meta">10 min</div>
+        </div>
+      </div>
+
+      <h3>12.1 &nbsp;Application pods</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">pods</span><button class="copy">copy</button></div><pre>kubectl get pods -n staging -o wide
+kubectl rollout status deployment/jomo-backend -n staging
+kubectl logs -n staging -l app=jomo-backend --tail=50</pre></div>
+      <p>You want <code>2/2 Running</code>, with <code>Server running on port 3000</code> and <code>All database connections established</code> in the logs.</p>
+      <div class="note warn">
+        <span class="note-label">If CrashLoopBackOff</span>
+        <p>It is almost always the Atlas allowlist (Phase 08):</p>
+        <div class="term" style="margin:10px 0 0"><div class="term-bar"><span class="term-label">diagnose</span><button class="copy">copy</button></div><pre>kubectl logs -n staging -l app=jomo-backend --tail=100 | grep -i "mongo\|database\|ECONN"</pre></div>
+      </div>
+
+      <h3>12.2 &nbsp;Monitoring stack</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">monitoring</span><button class="copy">copy</button></div><pre>kubectl get pods -n monitoring-staging
+kubectl get pvc  -n monitoring-staging   <span class="c"># both must be Bound, not Pending</span></pre></div>
+      <p><code>Pending</code> PVCs send you back to Phase 04 or the EBS CSI driver.</p>
+
+      <h3>12.3 &nbsp;Ingress and TLS</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">tls</span><button class="copy">copy</button></div><pre>kubectl get ingress -n staging
+kubectl get certificate -n staging</pre></div>
+      <p>Wait for the certificate to reach <code>READY=True</code> &mdash; typically 1&ndash;3 minutes. If it stalls:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">debug challenge</span><button class="copy">copy</button></div><pre>kubectl describe certificate staging-tls -n staging
+kubectl get challenges -n staging
+kubectl describe challenge -n staging</pre></div>
+      <p>A stuck challenge means DNS is not yet pointing at the load balancer &mdash; recheck Phase 07.</p>
+
+      <h3>12.4 &nbsp;End to end</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">curl</span><button class="copy">copy</button></div><pre><span class="c"># API route listing — clearest proof the backend is reachable</span>
+curl -s https://api-dev.amritesh.dev/api | head -40
+
+<span class="c"># Prometheus metrics</span>
+curl -s https://api-dev.amritesh.dev/metrics | head -20
+
+<span class="c"># Monitoring UIs</span>
+open https://api-dev.amritesh.dev/grafana/
+open https://api-dev.amritesh.dev/prometheus/</pre></div>
+      <p>Grafana login is <code>admin</code> with your <code>GRAFANA_ADMIN_PASSWORD</code>.</p>
+      <h3>13.5 &nbsp;CORS actually works</h3>
+      <p>Because <code>ALLOWED_ORIGINS</code> was missing from the inherited <code>.env</code> (Phase 2.2), verify it explicitly rather than assuming. A preflight from an allowed origin should return <code>access-control-allow-origin</code>:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">cors preflight</span><button class="copy">copy</button></div><pre>curl -s -I -X OPTIONS https://api-dev.amritesh.dev/api/plans \
+  -H "Origin: https://api-dev.amritesh.dev" \
+  -H "Access-Control-Request-Method: GET" \
+  | grep -i "access-control-allow-origin" \
+  || echo "NO CORS HEADER — check the ALLOWED_ORIGINS secret"</pre></div>
+      <p>Swap in your real frontend origin. A blocked origin is logged by the pod, so cross-check:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">cors logs</span><button class="copy">copy</button></div><pre>kubectl logs -n staging -l app=jomo-backend --tail=100 | grep -i "cors"</pre></div>
+
+      <div class="note">
+        <span class="note-label">/health is intentionally not public</span>
+        <p><code>k8s/staging-ingress.yaml</code> exposes only <code>/api</code>, <code>/metrics</code>, <code>/grafana</code>, and <code>/prometheus</code>. <code>/health</code> exists solely for the kubelet&rsquo;s liveness and readiness probes, so <code>curl .../health</code> returning 404 is correct. To reach it directly:</p>
+        <div class="term" style="margin:10px 0 0"><div class="term-bar"><span class="term-label">port-forward</span><button class="copy">copy</button></div><pre>kubectl port-forward -n staging deploy/jomo-backend 3000:3000
+curl http://localhost:3000/health</pre></div>
+      </div>
+
+      <h3>12.5 &nbsp;Prometheus is actually scraping</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">port-forward</span><button class="copy">copy</button></div><pre>kubectl port-forward -n monitoring-staging svc/prometheus 9090:9090</pre></div>
+      <p>Open <code>localhost:9090/prometheus/targets</code> &mdash; the <code>jomo-backend-staging</code> job should read <strong>UP</strong>. Then <code>/prometheus/alerts</code> should list 4 rules. Note the <code>/prometheus</code> prefix: the deployment sets <code>--web.route-prefix=/prometheus</code>.</p>
+      <label class="chk"><input type="checkbox" data-p="13"><span>Phase 13 complete</span></label>
+    </section>
+
+    <!-- ============ PHASE 14 ============ -->
+    <section class="phase" id="p14">
+      <div class="phase-head">
+        <div class="phase-num">14</div>
+        <div>
+          <h2>Post-deploy wiring</h2>
+          <div class="phase-meta">30 min</div>
+        </div>
+      </div>
+
+      <h3>13.1 &nbsp;Apply the HPA</h3>
+      <p><code>k8s/hpa.yaml</code> has no namespace and is not applied by the workflow. Apply it now that metrics-server exists:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">hpa</span><button class="copy">copy</button></div><pre>kubectl apply -f k8s/hpa.yaml -n staging
+kubectl get hpa -n staging</pre></div>
+      <p>The <code>TARGETS</code> column must show a real percentage, not <code>&lt;unknown&gt;</code>.</p>
+
+      <h3>13.2 &nbsp;Import the Grafana dashboard</h3>
+      <p>Grafana &rarr; Dashboards &rarr; New &rarr; Import &rarr; Upload JSON file &rarr; <code>monitoring/grafana/dashboards/jomobit-overview.json</code> &rarr; select the <code>Prometheus</code> datasource &rarr; Import.</p>
+
+      <h3>13.3 &nbsp;Repoint third-party services</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Service</th><th>What to update</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Auth0</strong></td><td>Allowed Callback / Logout / Web Origins; API Identifier must match <code>AUTH0_AUDIENCE</code></td></tr>
+          <tr><td><strong>Razorpay</strong></td><td><code>POST https://api-dev.amritesh.dev/api/webhooks/razorpay</code></td></tr>
+          <tr><td><strong>n8n</strong></td><td>Any callback URLs pointing at the old backend</td></tr>
+          <tr><td><strong>Frontend</strong></td><td><code>jomobit-frontend</code> API base URL &rarr; <code>https://api-dev.amritesh.dev</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Verified against <code>src/routes/webhooks.js</code> &mdash; Auth0 uses <code>/api/webhooks/auth0</code> plus <code>/auth0/user-registration</code>, <code>/user-login</code>, <code>/user-update</code>, and <code>/user-deletion</code>.</p>
+
+      <h3>13.4 &nbsp;Optional: network policy</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">optional</span><button class="copy">copy</button></div><pre>kubectl apply -f k8s/network-policy.yaml -n staging</pre></div>
+      <p>Read it first. EKS&rsquo;s default VPC CNI does <strong>not</strong> enforce NetworkPolicy unless network policy support is explicitly enabled on the <code>vpc-cni</code> addon, so this may be a silent no-op.</p>
+      <label class="chk"><input type="checkbox" data-p="14"><span>Phase 14 complete</span></label>
+    </section>
+
+    <hr class="big">
+
+    <!-- ============ PRODUCTION ============ -->
+    <section id="prod">
+      <div class="apx-head">Going to production later</div>
+      <p>The workflow deploys <code>main</code> &rarr; the <code>production</code> namespace and <code>monitoring-prod</code>, at <code>api.amritesh.dev</code>. To light that up:</p>
+      <ol>
+        <li>Add DNS for <code>api.amritesh.dev</code> &rarr; the same <code>$LB_HOST</code> (Phase 07 again).</li>
+        <li>Set production values for the same secret names. GitHub <em>Environment</em> secrets on <code>production</code> override repository secrets &mdash; use that to separate prod from staging config.</li>
+        <li>Merge to <code>main</code>, or dispatch with <code>environment: production</code> and an explicit <code>image_tag</code>.</li>
+      </ol>
+      <p>Phases 00&ndash;09 are shared cluster infrastructure. You do not repeat them.</p>
+
+      <h3>Rollback</h3>
+      <div class="term"><div class="term-bar"><span class="term-label">rollback</span><button class="copy">copy</button></div><pre>kubectl rollout undo deployment/jomo-backend -n staging
+kubectl rollout status deployment/jomo-backend -n staging</pre></div>
+      <p>Or <strong>Actions &rarr; Run workflow</strong> with action <code>rollback</code>.</p>
+    </section>
+
+    <!-- ============ APPENDIX A ============ -->
+    <section id="apxa">
+      <div class="apx-head">Appendix A &middot; Cost breakdown</div>
+      <p>Rough monthly, <code>ap-south-1</code>:</p>
+      <div class="tw"><table>
+        <thead><tr><th>Item</th><th class="num">USD / month</th></tr></thead>
+        <tbody>
+          <tr><td>EKS control plane</td><td class="num">73</td></tr>
+          <tr><td>2 &times; t3.medium nodes</td><td class="num">65</td></tr>
+          <tr><td>NAT gateway (hourly + modest data)</td><td class="num">35</td></tr>
+          <tr><td>Network Load Balancer</td><td class="num">18</td></tr>
+          <tr><td>EBS &mdash; 2 &times; 30Gi node volumes</td><td class="num">6</td></tr>
+          <tr><td>EBS &mdash; Prometheus 10Gi + Grafana 5Gi</td><td class="num">2</td></tr>
+          <tr><td>Route 53 hosted zone &mdash; <em>only if 7.3 Option B</em></td><td class="num">0.50</td></tr>
+        </tbody>
+        <tfoot><tr><td>Total, staging only</td><td class="num">~199</td></tr></tfoot>
+      </table></div>
+      <p>Adding production doubles the PVCs and adds a second monitoring stack &mdash; budget <strong>$230&ndash;250</strong> total, since the cluster, nodes, NAT gateway, and load balancer are all shared.</p>
+      <div class="note warn">
+        <span class="note-label">Free tier will not save you here</span>
+        <p>A new AWS account gets 12 months of limited free tier, but <strong>EKS control-plane hours and NAT gateway hours are not free-tier eligible</strong>. The $73 + $35 starts on day one.</p>
+      </div>
+      <h4>Ways to cut it</h4>
+      <ul>
+        <li><strong>Single node</strong> (<code>desiredCapacity: 1</code>, <code>minSize: 1</code>) saves ~$32, but the 2-replica deployment loses its availability guarantee.</li>
+        <li><strong><code>privateNetworking: false</code></strong> drops the NAT gateway (~$35) &mdash; <em>but</em> node IPs become ephemeral and the Atlas allowlist stops working reliably. Not recommended.</li>
+        <li><strong>Prometheus retention</strong> is <code>30d</code> on a 10Gi volume; drop to <code>7d</code> and 5Gi if space is tight.</li>
+      </ul>
+    </section>
+
+    <!-- ============ APPENDIX B ============ -->
+    <section id="apxb">
+      <div class="apx-head">Appendix B &middot; What broke last time</div>
+      <p>The repo carries a stack of fix-it notes from the previous deployment. These are the recurring causes, all handled proactively above:</p>
+      <div class="tw"><table>
+        <thead><tr><th>Note in repo</th><th>Root cause</th><th>Handled in</th></tr></thead>
+        <tbody>
+          <tr><td><code>TROUBLESHOOTING-PODS-PENDING.md</code></td><td>No EBS CSI driver / no <code>gp2</code> StorageClass</td><td>Phases 03, 04</td></tr>
+          <tr><td><code>FIX-404-ISSUE.md</code>, <code>TROUBLESHOOT-URL-ACCESS.md</code></td><td>Missing or misrouted ingress controller</td><td>Phase 06</td></tr>
+          <tr><td><code>DNS-UPDATE-REQUIRED.md</code>, <code>UPDATE-DNS-NOW.md</code></td><td>DNS pointed at an old load balancer</td><td>Phase 07</td></tr>
+          <tr><td><code>METRICS-ENDPOINT-FIX.md</code></td><td><code>/metrics</code> path routing</td><td>already fixed in <code>staging-ingress.yaml</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Once this deploy is green those files are stale &mdash; worth deleting so they stop misleading future you.</p>
+    </section>
+
+    <!-- ============ APPENDIX C ============ -->
+    <section id="apxc">
+      <div class="apx-head">Appendix C &middot; Changing cluster name or region</div>
+      <p>If you do not want <code>4-jomo-cluster</code> / <code>ap-south-1</code>, you must edit <code>.github/workflows/cicd.yml</code> in several places: three <code>update-kubeconfig</code> calls in the <code>deploy</code>, <code>deploy-monitoring</code>, and <code>rollback</code> jobs, plus three <code>aws-region:</code> values.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">preview then apply</span><button class="copy">copy</button></div><pre><span class="c"># See exactly which lines change</span>
+grep -n "ap-south-1\|4-jomo-cluster" .github/workflows/cicd.yml
+
+<span class="c"># Apply</span>
+sed -i '' 's/4-jomo-cluster/YOUR-CLUSTER/g; s/ap-south-1/YOUR-REGION/g' \
+  .github/workflows/cicd.yml infra/cluster.yaml</pre></div>
+      <p>Also update the region in the Phase 09 IAM policy ARN. Keeping the original names is strictly less work.</p>
+    </section>
+
+    <!-- ============ QUICK REF ============ -->
+    <section id="quick">
+      <div class="apx-head">Quick reference</div>
+      <div class="term"><div class="term-bar"><span class="term-label">day-to-day</span><button class="copy">copy</button></div><pre>export AWS_PROFILE=jomo AWS_REGION=ap-south-1
+
+<span class="k"># Cluster access</span>
+aws eks update-kubeconfig --region ap-south-1 --name 4-jomo-cluster
+
+<span class="k"># App</span>
+kubectl get pods,svc,ingress,hpa -n staging
+kubectl logs -n staging -l app=jomo-backend -f
+kubectl rollout restart deployment/jomo-backend -n staging
+
+<span class="k"># Monitoring</span>
+kubectl get pods,pvc -n monitoring-staging
+kubectl port-forward -n monitoring-staging svc/grafana 3001:3000
+
+<span class="k"># TLS</span>
+kubectl get certificate,challenges -n staging
+
+<span class="k"># Load balancer hostname</span>
+kubectl get svc -n ingress-nginx ingress-nginx-controller
+
+<span class="k"># Repo helper scripts</span>
+./scripts/quick-check.sh
+npm run monitoring:check</pre></div>
+
+      <h3>Tear-down, if you need to start over</h3>
+      <div class="note warn">
+        <span class="note-label">Order matters here too</span>
+        <p>Delete the Kubernetes LoadBalancers <em>first</em>, or <code>eksctl</code> will fail to delete the VPC and leave orphaned resources billing.</p>
+      </div>
+      <div class="term"><div class="term-bar"><span class="term-label">teardown</span><button class="copy">copy</button></div><pre>helm uninstall ingress-nginx -n ingress-nginx
+kubectl delete namespace staging monitoring-staging --ignore-not-found
+
+eksctl delete cluster -f infra/cluster.yaml --wait</pre></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>jomobit-backend &middot; feature/scaling &middot; c967026</span>
+    <span>15 phases &middot; new laptop, new account &middot; DEPLOY-FRESH-AWS.md</span>
+  </footer>
+
+</div>
+
+<script>
+  // ---- copy buttons ----
+  document.querySelectorAll('.term').forEach(function (term) {
+    var btn = term.querySelector('.copy');
+    var pre = term.querySelector('pre');
+    if (!btn || !pre) return;
+    btn.addEventListener('click', function () {
+      // Strip comment-only lines? No — copy verbatim, including comments.
+      var text = pre.innerText;
+      var done = function () {
+        btn.textContent = 'copied';
+        btn.dataset.ok = '1';
+        setTimeout(function () { btn.textContent = 'copy'; delete btn.dataset.ok; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+      } else {
+        fallback(text, done);
+      }
+    });
+  });
+
+  function fallback(text, done) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch (e) { /* clipboard unavailable; leave label alone */ }
+  }
+
+  // ---- phase progress (per-viewer convenience only) ----
+  var KEY = 'jomo-eks-runbook-progress';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.chk input[data-p]'));
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a[data-p]'));
+  var TOTAL = boxes.length;
+
+  function read() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return {};
+      var v = JSON.parse(raw);
+      return (v && typeof v === 'object') ? v : {};
+    } catch (e) { return {}; }
+  }
+
+  function write(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+  }
+
+  function paint(state) {
+    var n = 0;
+    boxes.forEach(function (b) {
+      var on = !!state[b.dataset.p];
+      b.checked = on;
+      if (on) n++;
+    });
+    links.forEach(function (a) {
+      a.classList.toggle('done', !!state[a.dataset.p]);
+    });
+    var el = document.getElementById('pdone');
+    var bar = document.getElementById('pbar');
+    if (el) el.textContent = String(n);
+    if (bar) bar.style.width = (TOTAL ? (n / TOTAL) * 100 : 0) + '%';
+  }
+
+  var state = read();
+  paint(state);
+
+  boxes.forEach(function (b) {
+    b.addEventListener('change', function () {
+      if (b.checked) { state[b.dataset.p] = 1; } else { delete state[b.dataset.p]; }
+      write(state);
+      paint(state);
+    });
+  });
+</script>
+</body>
+</html>
