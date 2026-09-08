@@ -1,0 +1,31 @@
+# In-cluster k6 load test. Run manually; not part of the CI/CD pipeline.
+#   kubectl apply -f k8s/load-test-job.yaml
+#   kubectl logs -n staging job/k6-load-test -f
+#   kubectl delete job k6-load-test -n staging
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load-test
+  namespace: staging
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.49.0
+          args: ["run", "/scripts/k6-load-test.js"]
+          env:
+            - name: TARGET
+              value: "http://jomo-backend-service.staging.svc.cluster.local/api"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests: { memory: "256Mi", cpu: "200m" }
+            limits:   { memory: "512Mi", cpu: "1000m" }
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-load-test-script

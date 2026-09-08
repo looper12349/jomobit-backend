@@ -102,6 +102,11 @@ class App {
       preflightContinue: false
     }));
 
+    // Metrics must be registered BEFORE the rate limiters. It records on
+    // res.on('finish'), so sitting here it captures rate-limited 429s too —
+    // registered after them, throttled traffic is invisible in monitoring.
+    this.app.use(metricsMiddleware);
+
     // Enhanced rate limiting with different tiers
     this.app.use('/api/auth', rateLimitConfigs.auth);
     this.app.use('/api/admin', rateLimitConfigs.admin);
@@ -159,7 +164,6 @@ class App {
     // Logging middleware
     this.app.use(morganMiddleware);
     this.app.use(requestLogger);
-    this.app.use(metricsMiddleware);
   }
 
   initializeRoutes() {
