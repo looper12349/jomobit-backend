@@ -311,7 +311,11 @@ jobs:
   deploy-monitoring:
     name: Deploy Monitoring Stack (${{ needs.build-and-push.outputs.environment }})
     runs-on: ubuntu-latest
-    needs: deploy
+    # Must list build-and-push explicitly: the `needs` context only exposes DIRECT
+    # dependencies, so with `needs: deploy` alone every
+    # needs.build-and-push.outputs.* below resolved to an empty string — which sent
+    # production monitoring into the staging namespace.
+    needs: [build-and-push, deploy]
     if: needs.build-and-push.outputs.should-deploy == 'true'
 
     steps:
@@ -437,6 +441,13 @@ jobs:
       - name: Deploy Grafana datasource
         run: |
           sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/grafana-datasource.yaml | kubectl apply -f -
+
+      - name: Deploy Grafana dashboards
+        # MUST run before "Deploy Grafana": the deployment mounts the
+        # grafana-dashboard-provider and grafana-dashboards ConfigMaps, and the pod
+        # will not start if they are missing.
+        run: |
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/grafana-dashboards.yaml | kubectl apply -f -
 
       - name: Deploy Grafana
         run: |
