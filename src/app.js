@@ -22,6 +22,7 @@ const { getSecurityConfig, validateSecurityConfig } = require('./config/security
 const databaseConnection = require('./config/database');
 const redisConnection = require('./config/redis');
 const subscriptionJobs = require('./jobs/subscriptionJobs');
+const { metricsMiddleware, getMetrics, getMetricsContentType } = require('./utils/metrics');
 
 class App {
   constructor() {
@@ -158,6 +159,7 @@ class App {
     // Logging middleware
     this.app.use(morganMiddleware);
     this.app.use(requestLogger);
+    this.app.use(metricsMiddleware);
   }
 
   initializeRoutes() {
@@ -172,6 +174,15 @@ class App {
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || 'development'
       });
+    });
+
+    this.app.get('/metrics', async (req, res, next) => {
+      try {
+        res.set('Content-Type', getMetricsContentType());
+        res.status(200).send(await getMetrics());
+      } catch (error) {
+        next(error);
+      }
     });
 
     // Import routes
