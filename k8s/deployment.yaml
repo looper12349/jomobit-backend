@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jomo-backend
+  labels:
+    app: jomo-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jomo-backend
+  template:
+    metadata:
+      labels:
+        app: jomo-backend
+    spec:
+      containers:
+      - name: jomo-backend
+        image: ai29/jomo-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: jomo-backend-config
+        - secretRef:
+            name: jomo-backend-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
