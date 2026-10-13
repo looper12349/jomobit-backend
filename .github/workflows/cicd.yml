@@ -121,6 +121,12 @@ jobs:
             echo "image-tag=feature-enhance-generation-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "namespace=staging" >> $GITHUB_OUTPUT
 
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/feature/scaling" ]]; then
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "image-tag=feature-scaling-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "namespace=staging" >> $GITHUB_OUTPUT
+
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should-deploy=true" >> $GITHUB_OUTPUT
             echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
