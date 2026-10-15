@@ -9,4 +9,8 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: gp2  # AWS EBS, adjust for your cloud provider
+  # storageClassName will use the default storage class if not specified
+  # Uncomment and set if you need a specific storage class:
+  # storageClassName: gp2  # For AWS EBS
+  # storageClassName: gp3  # For AWS EBS gp3
+  # storageClassName: standard  # For GKE
