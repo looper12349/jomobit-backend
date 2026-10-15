@@ -19,7 +19,9 @@
     "test:swagger:debug": "DEBUG=1 node scripts/test-swagger-endpoints.js",
     "demo:swagger": "node scripts/demo-swagger-server.js",
     "monitoring:up": "docker compose -f docker-compose.monitoring.yml up -d",
-    "monitoring:down": "docker compose -f docker-compose.monitoring.yml down"
+    "monitoring:down": "docker compose -f docker-compose.monitoring.yml down",
+    "monitoring:deploy": "./scripts/deploy-monitoring.sh",
+    "monitoring:check": "./scripts/check-monitoring.sh"
   },
   "keywords": [],
   "author": "",
