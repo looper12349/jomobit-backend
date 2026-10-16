@@ -293,7 +293,7 @@ jobs:
               - protocol: TCP
                 port: 80
                 targetPort: 3000
-            type: LoadBalancer
+            type: ClusterIP
           EOF
 
       - name: Wait for rollout
@@ -338,8 +338,33 @@ jobs:
         run: |
           if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
             echo "namespace=monitoring-prod" >> $GITHUB_OUTPUT
+            echo "app-namespace=production" >> $GITHUB_OUTPUT
           else
             echo "namespace=monitoring-staging" >> $GITHUB_OUTPUT
+            echo "app-namespace=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install cert-manager (if not exists)
+        run: |
+          if ! kubectl get namespace cert-manager &> /dev/null; then
+            echo "Installing cert-manager..."
+            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+            echo "Waiting for cert-manager to be ready..."
+            kubectl wait --for=condition=available --timeout=180s deployment/cert-manager -n cert-manager
+            kubectl wait --for=condition=available --timeout=180s deployment/cert-manager-webhook -n cert-manager
+            sleep 10
+          else
+            echo "cert-manager already installed"
+          fi
+
+      - name: Create Let's Encrypt ClusterIssuer (if not exists)
+        run: |
+          if ! kubectl get clusterissuer letsencrypt-prod &> /dev/null; then
+            echo "Creating Let's Encrypt ClusterIssuer..."
+            kubectl apply -f k8s/cert-manager-issuer.yaml
+            sleep 5
+          else
+            echo "ClusterIssuer already exists"
           fi
 
       - name: Create monitoring namespace
@@ -349,7 +374,6 @@ jobs:
 
       - name: Setup Prometheus RBAC
         run: |
-          # Update namespace in RBAC and apply
           sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/prometheus-rbac.yaml | kubectl apply -f -
 
       - name: Create Grafana admin password secret
@@ -359,16 +383,16 @@ jobs:
             --from-literal=admin-password="${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin123' }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Deploy Prometheus
+      - name: Deploy Prometheus PVC
         run: |
-          # Update namespace in all manifests and apply
-          for file in k8s/monitoring/prometheus-*.yaml; do
-            sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" "$file" | kubectl apply -f -
-          done
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/prometheus-pvc.yaml | kubectl apply -f -
+
+      - name: Deploy Grafana PVC
+        run: |
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/grafana-pvc.yaml | kubectl apply -f -
 
       - name: Update Prometheus config for environment
         run: |
-          # Create environment-specific Prometheus config
           cat <<EOF | kubectl apply -f -
           apiVersion: v1
           kind: ConfigMap
@@ -390,7 +414,7 @@ jobs:
                     - role: pod
                       namespaces:
                         names:
-                          - ${{ needs.build-and-push.outputs.namespace }}
+                          - ${{ steps.monitoring-ns.outputs.app-namespace }}
                   relabel_configs:
                     - source_labels: [__meta_kubernetes_pod_label_app]
                       action: keep
@@ -404,20 +428,36 @@ jobs:
                       target_label: pod
           EOF
 
+      - name: Deploy Prometheus alerts
+        run: |
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/prometheus-alerts.yaml | kubectl apply -f -
+
+      - name: Deploy Prometheus
+        run: |
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/prometheus-deployment.yaml | kubectl apply -f -
+
+      - name: Deploy Grafana datasource
+        run: |
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/grafana-datasource.yaml | kubectl apply -f -
+
       - name: Deploy Grafana
         run: |
-          # Update namespace in Grafana manifests and apply
-          for file in k8s/monitoring/grafana-*.yaml; do
-            sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" "$file" | kubectl apply -f -
-          done
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/grafana-deployment.yaml | kubectl apply -f -
 
-      - name: Deploy Ingress
+      - name: Create ExternalName services in app namespace
         run: |
-          # Deploy appropriate ingress based on environment
           if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
-            kubectl apply -f k8s/monitoring/ingress-prod.yaml
+            kubectl apply -f k8s/production-monitoring-services.yaml
           else
-            kubectl apply -f k8s/monitoring/ingress-staging.yaml
+            kubectl apply -f k8s/staging-monitoring-services.yaml
+          fi
+
+      - name: Deploy application ingress with monitoring paths
+        run: |
+          if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
+            kubectl apply -f k8s/production-ingress.yaml
+          else
+            kubectl apply -f k8s/staging-ingress.yaml
           fi
 
       - name: Wait for monitoring stack
@@ -435,8 +475,8 @@ jobs:
           echo "📊 Monitoring Stack Status (${{ needs.build-and-push.outputs.environment }}):"
           echo "================================"
           echo "Environment: ${{ needs.build-and-push.outputs.environment }}"
-          echo "Namespace: ${{ steps.monitoring-ns.outputs.namespace }}"
-          echo "Monitoring: ${{ needs.build-and-push.outputs.namespace }} namespace"
+          echo "App Namespace: ${{ steps.monitoring-ns.outputs.app-namespace }}"
+          echo "Monitoring Namespace: ${{ steps.monitoring-ns.outputs.namespace }}"
           echo ""
           kubectl get pods -n ${{ steps.monitoring-ns.outputs.namespace }}
           echo ""
@@ -446,16 +486,19 @@ jobs:
           echo "📈 Monitoring Access:"
           if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
             echo "Application:  https://api.jomo.dazzeldigital.com/api"
-            echo "Grafana:      https://api.jomo.dazzeldigital.com/grafana"
-            echo "Prometheus:   https://api.jomo.dazzeldigital.com/prometheus"
+            echo "Grafana:      https://api.jomo.dazzeldigital.com/grafana/"
+            echo "Prometheus:   https://api.jomo.dazzeldigital.com/prometheus/"
           else
             echo "Application:  https://api-dev-jomo.dazzeldigital.com/api"
-            echo "Grafana:      https://api-dev-jomo.dazzeldigital.com/grafana"
-            echo "Prometheus:   https://api-dev-jomo.dazzeldigital.com/prometheus"
+            echo "Grafana:      https://api-dev-jomo.dazzeldigital.com/grafana/"
+            echo "Prometheus:   https://api-dev-jomo.dazzeldigital.com/prometheus/"
           fi
           echo ""
           echo "🔍 Ingress Status:"
-          kubectl get ingress -n ${{ steps.monitoring-ns.outputs.namespace }}
+          kubectl get ingress -n ${{ steps.monitoring-ns.outputs.app-namespace }}
+          echo ""
+          echo "🔐 SSL Certificate Status:"
+          kubectl get certificate -n ${{ steps.monitoring-ns.outputs.app-namespace }}
 
   rollback:
     name: Rollback Kubernetes Deployment

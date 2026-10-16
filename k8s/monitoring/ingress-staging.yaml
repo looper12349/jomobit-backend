@@ -4,21 +4,15 @@ metadata:
   name: monitoring-ingress
   namespace: monitoring-staging
   annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # If you have cert-manager
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  tls:
-    - hosts:
-        - api-dev-jomo.dazzeldigital.com
-      secretName: monitoring-staging-tls
+  ingressClassName: nginx
   rules:
     - host: api-dev-jomo.dazzeldigital.com
       http:
         paths:
-          # Grafana Staging
-          - path: /grafana(/|$)(.*)
+          # Grafana Staging - no rewrite needed, Grafana handles /grafana subpath
+          - path: /grafana
             pathType: Prefix
             backend:
               service:
@@ -26,8 +20,8 @@ spec:
                 port:
                   number: 3000
           
-          # Prometheus Staging (optional - usually kept internal)
-          - path: /prometheus(/|$)(.*)
+          # Prometheus Staging - needs rewrite to remove /prometheus prefix
+          - path: /prometheus
             pathType: Prefix
             backend:
               service:

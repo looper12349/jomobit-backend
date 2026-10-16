@@ -1,0 +1,55 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: production-ingress
+  namespace: production
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.jomo.dazzeldigital.com
+      secretName: production-tls
+  rules:
+    - host: api.jomo.dazzeldigital.com
+      http:
+        paths:
+          # Application API (main backend)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: jomo-backend-service
+                port:
+                  number: 80
+          
+          # Metrics endpoint (Prometheus scraping)
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: jomo-backend-service
+                port:
+                  number: 80
+          
+          # Grafana Monitoring
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+          
+          # Prometheus Monitoring
+          - path: /prometheus
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090
