@@ -5,6 +5,8 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 1
+  strategy:
+    type: Recreate   # RWO PVC: avoids 'lock DB directory' races on rollout
   selector:
     matchLabels:
       app: prometheus

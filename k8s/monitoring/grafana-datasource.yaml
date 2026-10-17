@@ -9,7 +9,11 @@ data:
     datasources:
       - name: Prometheus
         type: prometheus
+        # Must be 'prometheus': jomobit-overview.json pins its panels to this uid.
+        uid: prometheus
         access: proxy
-        url: http://prometheus:9090
+        # Prometheus runs with --web.route-prefix=/prometheus, so its API
+        # lives at /prometheus/api/v1/... — the prefix must be in this URL.
+        url: http://prometheus:9090/prometheus
         isDefault: true
         editable: true

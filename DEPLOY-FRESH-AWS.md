@@ -1263,9 +1263,53 @@ kubectl get hpa -n staging
 
 The `TARGETS` column must show a real percentage, not `<unknown>`.
 
-### 14.2 Import the Grafana dashboard
+### 14.2 Log in to Grafana and import the dashboard
 
-Grafana → Dashboards → New → Import → Upload JSON file →
+**Credentials.** Username is `admin`. The password is whatever CI put in the `grafana-secrets`
+secret — your `GRAFANA_ADMIN_PASSWORD` GitHub secret, or **`admin123`** if you never set one. Read
+the live value:
+
+```bash
+kubectl get secret grafana-secrets -n monitoring-staging \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+```
+
+Log in at `https://api-dev.amritesh.dev/grafana/` — **keep the trailing slash**
+(`GF_SERVER_SERVE_FROM_SUB_PATH` is on).
+
+> Grafana seeds the admin password only when it creates a fresh database. Changing
+> `GRAFANA_ADMIN_PASSWORD` later will **not** reset an existing install — use
+> `kubectl exec -n monitoring-staging deploy/grafana -- grafana cli admin reset-admin-password '<new>'`
+> for that.
+
+**Change it after first login** if it fell back to `admin123` — see 14.5, this UI is on the public
+internet.
+
+**Check the datasource before importing.** Prometheus runs with `--web.route-prefix=/prometheus`, so
+its API is at `/prometheus/api/v1/...`, and the datasource URL must carry that prefix:
+
+```yaml
+url: http://prometheus:9090/prometheus     # NOT http://prometheus:9090
+```
+
+Without it every panel renders empty while Grafana itself looks perfectly healthy. Verify from
+inside the pod:
+
+```bash
+kubectl exec -n monitoring-staging deploy/grafana -- \
+  wget -qO- http://prometheus:9090/prometheus/api/v1/status/buildinfo
+```
+
+JSON means good. If you had to change `k8s/monitoring/grafana-datasource.yaml`, apply it and restart
+— provisioning is only read at startup:
+
+```bash
+sed 's/namespace: monitoring/namespace: monitoring-staging/g' \
+  k8s/monitoring/grafana-datasource.yaml | kubectl apply -f -
+kubectl rollout restart deployment/grafana -n monitoring-staging
+```
+
+**Import.** Grafana → Dashboards → New → Import → Upload JSON file →
 `monitoring/grafana/dashboards/jomobit-overview.json` → select the `Prometheus` datasource → Import.
 
 ### 14.3 Update third-party services to the new domain
@@ -1291,6 +1335,53 @@ kubectl apply -f k8s/network-policy.yaml -n staging
 
 Read it first — EKS's default VPC CNI does **not** enforce NetworkPolicy unless network policy
 support is explicitly enabled on the `vpc-cni` addon, so this may be a silent no-op.
+
+### 14.5 ⚠️ Lock down the public monitoring endpoints
+
+`k8s/staging-ingress.yaml` exposes `/grafana` and `/prometheus` on the public internet with **no
+authentication annotations at all**. Grafana at least has a login form. **Prometheus has none** —
+anyone who finds `https://api-dev.amritesh.dev/prometheus/` can read every metric, target, and alert
+rule you have.
+
+Pick one:
+
+**Option A — HTTP basic auth on the ingress** (quickest):
+
+```bash
+# Create the htpasswd secret (needs `htpasswd`: brew install httpd)
+htpasswd -nb monitor '<a-strong-password>' > /tmp/auth
+kubectl create secret generic monitoring-basic-auth \
+  --from-file=auth=/tmp/auth -n staging \
+  --dry-run=client -o yaml | kubectl apply -f -
+rm /tmp/auth
+```
+
+Then split the monitoring paths into their own Ingress resource carrying:
+
+```yaml
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: monitoring-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Monitoring"
+```
+
+Annotations apply per-Ingress, not per-path, so this must be a second Ingress object — putting them
+on `staging-ingress` would demand auth for `/api` too.
+
+**Option B — IP allowlist**, if you have a static office/VPN address:
+
+```yaml
+    nginx.ingress.kubernetes.io/whitelist-source-range: "203.0.113.4/32"
+```
+
+**Option C — drop them from the ingress entirely** and reach them over port-forward:
+
+```bash
+kubectl port-forward -n monitoring-staging svc/grafana    3001:3000
+kubectl port-forward -n monitoring-staging svc/prometheus 9090:9090
+```
+
+Most secure, and costs you nothing but a terminal. Option C is the right default for staging;
+Option A if the team needs browser access.
 
 ---
 

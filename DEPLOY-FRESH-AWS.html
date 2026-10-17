@@ -1630,7 +1630,29 @@ curl http://localhost:3000/health</pre></div>
 kubectl get hpa -n staging</pre></div>
       <p>The <code>TARGETS</code> column must show a real percentage, not <code>&lt;unknown&gt;</code>.</p>
 
-      <h3>14.2 &nbsp;Import the Grafana dashboard</h3>
+      <h3>14.2 &nbsp;Log in to Grafana and import the dashboard</h3>
+      <p><strong>Credentials.</strong> Username is <code>admin</code>. The password is whatever CI put in the <code>grafana-secrets</code> secret &mdash; your <code>GRAFANA_ADMIN_PASSWORD</code> GitHub secret, or <strong><code>admin123</code></strong> if you never set one. Read the live value:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">get password</span><button class="copy">copy</button></div><pre>kubectl get secret grafana-secrets -n monitoring-staging \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo</pre></div>
+      <p>Log in at <code>https://api-dev.amritesh.dev/grafana/</code> &mdash; <strong>keep the trailing slash</strong> (<code>GF_SERVER_SERVE_FROM_SUB_PATH</code> is on).</p>
+      <div class="note">
+        <span class="note-label">The password is seeded once</span>
+        <p>Grafana applies <code>GF_SECURITY_ADMIN_PASSWORD</code> only when it creates a fresh database. Changing the secret later will <strong>not</strong> reset an existing install &mdash; use <code>kubectl exec -n monitoring-staging deploy/grafana -- grafana cli admin reset-admin-password '&lt;new&gt;'</code> for that.</p>
+      </div>
+      <p><strong>Change it after first login</strong> if it fell back to <code>admin123</code> &mdash; see 14.5, this UI is on the public internet.</p>
+
+      <h4>Check the datasource before importing</h4>
+      <p>Prometheus runs with <code>--web.route-prefix=/prometheus</code>, so its API is at <code>/prometheus/api/v1/&hellip;</code> and the datasource URL must carry that prefix:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">grafana-datasource.yaml</span><button class="copy">copy</button></div><pre>url: http://prometheus:9090/prometheus     <span class="c"># NOT http://prometheus:9090</span></pre></div>
+      <p>Without it every panel renders empty while Grafana itself looks perfectly healthy. Verify from inside the pod &mdash; JSON means good:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>kubectl exec -n monitoring-staging deploy/grafana -- \
+  wget -qO- http://prometheus:9090/prometheus/api/v1/status/buildinfo</pre></div>
+      <p>If you had to change <code>k8s/monitoring/grafana-datasource.yaml</code>, apply it and restart &mdash; provisioning is only read at startup:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">apply + restart</span><button class="copy">copy</button></div><pre>sed 's/namespace: monitoring/namespace: monitoring-staging/g' \
+  k8s/monitoring/grafana-datasource.yaml | kubectl apply -f -
+kubectl rollout restart deployment/grafana -n monitoring-staging</pre></div>
+
+      <h4>Import</h4>
       <p>Grafana &rarr; Dashboards &rarr; New &rarr; Import &rarr; Upload JSON file &rarr; <code>monitoring/grafana/dashboards/jomobit-overview.json</code> &rarr; select the <code>Prometheus</code> datasource &rarr; Import.</p>
 
       <h3>14.3 &nbsp;Repoint third-party services</h3>
@@ -1648,6 +1670,30 @@ kubectl get hpa -n staging</pre></div>
       <h3>14.4 &nbsp;Optional: network policy</h3>
       <div class="term"><div class="term-bar"><span class="term-label">optional</span><button class="copy">copy</button></div><pre>kubectl apply -f k8s/network-policy.yaml -n staging</pre></div>
       <p>Read it first. EKS&rsquo;s default VPC CNI does <strong>not</strong> enforce NetworkPolicy unless network policy support is explicitly enabled on the <code>vpc-cni</code> addon, so this may be a silent no-op.</p>
+
+      <h3>14.5 &nbsp;Lock down the public monitoring endpoints</h3>
+      <div class="note stop">
+        <span class="note-label">Prometheus has no authentication at all</span>
+        <p><code>k8s/staging-ingress.yaml</code> exposes <code>/grafana</code> and <code>/prometheus</code> on the public internet with <strong>no authentication annotations</strong>. Grafana at least has a login form. Prometheus has none &mdash; anyone who finds <code>https://api-dev.amritesh.dev/prometheus/</code> can read every metric, target, and alert rule you have.</p>
+      </div>
+      <p><strong>Option A &mdash; HTTP basic auth on the ingress</strong> (quickest):</p>
+      <div class="term"><div class="term-bar"><span class="term-label">htpasswd secret</span><button class="copy">copy</button></div><pre><span class="c"># needs `htpasswd`: brew install httpd</span>
+htpasswd -nb monitor '&lt;a-strong-password&gt;' &gt; /tmp/auth
+kubectl create secret generic monitoring-basic-auth \
+  --from-file=auth=/tmp/auth -n staging \
+  --dry-run=client -o yaml | kubectl apply -f -
+rm /tmp/auth</pre></div>
+      <p>Then split the monitoring paths into their own Ingress resource carrying:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">annotations</span><button class="copy">copy</button></div><pre>nginx.ingress.kubernetes.io/auth-type: basic
+nginx.ingress.kubernetes.io/auth-secret: monitoring-basic-auth
+nginx.ingress.kubernetes.io/auth-realm: "Monitoring"</pre></div>
+      <p>Annotations apply per-Ingress, not per-path, so this must be a <em>second</em> Ingress object &mdash; putting them on <code>staging-ingress</code> would demand auth for <code>/api</code> too.</p>
+      <p><strong>Option B &mdash; IP allowlist</strong>, if you have a static office or VPN address:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">allowlist</span><button class="copy">copy</button></div><pre>nginx.ingress.kubernetes.io/whitelist-source-range: "203.0.113.4/32"</pre></div>
+      <p><strong>Option C &mdash; drop them from the ingress entirely</strong> and reach them over port-forward:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">port-forward</span><button class="copy">copy</button></div><pre>kubectl port-forward -n monitoring-staging svc/grafana    3001:3000
+kubectl port-forward -n monitoring-staging svc/prometheus 9090:9090</pre></div>
+      <p>Most secure, and costs nothing but a terminal. Option C is the right default for staging; Option A if the team needs browser access.</p>
       <label class="chk"><input type="checkbox" data-p="14"><span>Phase 14 complete</span></label>
     </section>
 
