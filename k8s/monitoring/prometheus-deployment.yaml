@@ -14,6 +14,12 @@ spec:
         app: prometheus
     spec:
       serviceAccountName: prometheus
+      # EBS volumes mount root-owned; prom/prometheus runs as nobody (65534).
+      # Without fsGroup the container cannot write /prometheus and crash-loops.
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
       containers:
         - name: prometheus
           image: prom/prometheus:v2.54.1

@@ -893,7 +893,7 @@ docker pull ai29/jomo-backend:latest || echo "repo missing or no access"</pre></
         </div>
       </div>
 
-      <h3>2.1 &nbsp;Write the cluster config</h3>
+      <h3>3.1 &nbsp;Write the cluster config</h3>
       <div class="term"><div class="term-bar"><span class="term-label">infra/cluster.yaml</span><button class="copy">copy</button></div><pre>cd /Users/amriteshindal/Amritesh/JOMOBIT/jomobit-backend
 mkdir -p infra
 cat &gt; infra/cluster.yaml &lt;&lt;'EOF'
@@ -941,7 +941,7 @@ managedNodeGroups:
       Environment: shared
 EOF</pre></div>
 
-      <h3>2.2 &nbsp;Create it</h3>
+      <h3>3.2 &nbsp;Create it</h3>
       <div class="term"><div class="term-bar"><span class="term-label">create &middot; 15–20 min</span><button class="copy">copy</button></div><pre>eksctl create cluster -f infra/cluster.yaml</pre></div>
       <div class="note warn">
         <span class="note-label">If it fails partway</span>
@@ -949,7 +949,7 @@ EOF</pre></div>
       </div>
       <p>This provisions a VPC, three public and three private subnets, one NAT gateway, the EKS control plane, and the managed node group.</p>
 
-      <h3>2.3 &nbsp;Verify</h3>
+      <h3>3.3 &nbsp;Verify</h3>
       <div class="term"><div class="term-bar"><span class="term-label">verify</span><button class="copy">copy</button></div><pre>aws eks update-kubeconfig --region ap-south-1 --name 4-jomo-cluster
 kubectl get nodes -o wide
 kubectl get pods -A</pre></div>
@@ -1290,7 +1290,7 @@ curl -I http://api-dev.amritesh.dev/api</pre></div>
         <p>MongoDB is Atlas-hosted (<code>jomobit.svtjsyk.mongodb.net</code>), so your <strong>data survived</strong> the old AWS account. But Atlas still allowlists the <em>old</em> account&rsquo;s egress IPs, which no longer exist. Skip this and pods will <code>CrashLoopBackOff</code>.</p>
       </div>
 
-      <h3>7.1 &nbsp;Get the new NAT gateway&rsquo;s public IP</h3>
+      <h3>8.1 &nbsp;Get the new NAT gateway&rsquo;s public IP</h3>
       <div class="term"><div class="term-bar"><span class="term-label">nat ip</span><button class="copy">copy</button></div><pre>export VPC_ID=$(aws eks describe-cluster --name 4-jomo-cluster \
   --query 'cluster.resourcesVpcConfig.vpcId' --output text)
 
@@ -1298,14 +1298,14 @@ aws ec2 describe-nat-gateways \
   --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" \
   --query 'NatGateways[].NatGatewayAddresses[].PublicIp' --output text</pre></div>
 
-      <h3>7.2 &nbsp;Add it in Atlas</h3>
+      <h3>8.2 &nbsp;Add it in Atlas</h3>
       <ol>
         <li>cloud.mongodb.com &rarr; your project &rarr; <strong>Network Access</strong> &rarr; <strong>IP Access List</strong></li>
         <li><strong>Add IP Address</strong> &rarr; <code>&lt;NAT_IP&gt;/32</code>, comment <code>EKS 4-jomo-cluster ap-south-1</code></li>
         <li>Delete the stale entries from the dead AWS account</li>
       </ol>
 
-      <h3>7.3 &nbsp;Also confirm</h3>
+      <h3>8.3 &nbsp;Also confirm</h3>
       <ul>
         <li>The Atlas cluster is still running &mdash; free and shared tiers auto-pause after 60 days idle</li>
         <li>The database user <code>jomobitai</code> still exists and the password in your <code>MONGODB_URI</code> is current</li>
@@ -1328,7 +1328,7 @@ aws ec2 describe-nat-gateways \
       </div>
       <p>The workflow authenticates with a static access key via <code>aws-actions/configure-aws-credentials@v4</code>. Create a dedicated user with the narrowest possible AWS permission, then grant Kubernetes access separately.</p>
 
-      <h3>8.1 &nbsp;Create the user and a minimal policy</h3>
+      <h3>9.1 &nbsp;Create the user and a minimal policy</h3>
       <div class="term"><div class="term-bar"><span class="term-label">iam</span><button class="copy">copy</button></div><pre>aws iam create-user --user-name github-actions-jomo
 
 cat &gt; /tmp/gha-eks-policy.json &lt;&lt;EOF
@@ -1353,7 +1353,7 @@ aws iam create-access-key --user-name github-actions-jomo</pre></div>
       </div>
       <p><code>eks:DescribeCluster</code> is the <em>only</em> AWS permission needed. It lets <code>update-kubeconfig</code> build a kubeconfig; everything after that is Kubernetes RBAC, granted next.</p>
 
-      <h3>8.2 &nbsp;Grant Kubernetes access via an EKS Access Entry</h3>
+      <h3>9.2 &nbsp;Grant Kubernetes access via an EKS Access Entry</h3>
       <div class="term"><div class="term-bar"><span class="term-label">access entry</span><button class="copy">copy</button></div><pre>export GHA_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:user/github-actions-jomo"
 
 aws eks create-access-entry \
@@ -1385,10 +1385,10 @@ aws eks associate-access-policy \
         </div>
       </div>
 
-      <h3>9.1 &nbsp;Create the environments</h3>
+      <h3>10.1 &nbsp;Create the environments</h3>
       <p>The <code>deploy</code> job declares <code>environment: name: staging|production</code>. Create both under <strong>Settings &rarr; Environments</strong>. Optionally add a required reviewer on <code>production</code>.</p>
 
-      <h3>9.2 &nbsp;Add the repository secrets</h3>
+      <h3>10.2 &nbsp;Add the repository secrets</h3>
       <p>Every value below is read by <code>.github/workflows/cicd.yml</code>. Anything not marked <span class="new">new</span> can be copied straight from your local <code>.env</code> &mdash; it is unrelated to AWS and survived the account loss.</p>
 
       <h4>AWS &amp; registry &mdash; the ones that must change</h4>
@@ -1444,7 +1444,7 @@ grep -E '^[A-Z0-9_]+=' .env \
       [ -n "$v" ] &amp;&amp; gh secret set "$k" --body "$v" &amp;&amp; echo "set $k"
     done</pre></div>
 
-      <h3>9.3 &nbsp;Recommended fix: stop shipping AWS creds to the app</h3>
+      <h3>10.3 &nbsp;Recommended fix: stop shipping AWS creds to the app</h3>
       <div class="note stop">
         <span class="note-label">Security &middot; your call</span>
         <p>The workflow injects the <em>deploy</em> credentials into the application&rsquo;s runtime secret:</p>
@@ -1519,7 +1519,7 @@ git push origin feature/scaling</pre></div>
         </div>
       </div>
 
-      <h3>12.1 &nbsp;Application pods</h3>
+      <h3>13.1 &nbsp;Application pods</h3>
       <div class="term"><div class="term-bar"><span class="term-label">pods</span><button class="copy">copy</button></div><pre>kubectl get pods -n staging -o wide
 kubectl rollout status deployment/jomo-backend -n staging
 kubectl logs -n staging -l app=jomo-backend --tail=50</pre></div>
@@ -1530,12 +1530,48 @@ kubectl logs -n staging -l app=jomo-backend --tail=50</pre></div>
         <div class="term" style="margin:10px 0 0"><div class="term-bar"><span class="term-label">diagnose</span><button class="copy">copy</button></div><pre>kubectl logs -n staging -l app=jomo-backend --tail=100 | grep -i "mongo\|database\|ECONN"</pre></div>
       </div>
 
-      <h3>12.2 &nbsp;Monitoring stack</h3>
+      <h3>13.2 &nbsp;Monitoring stack</h3>
       <div class="term"><div class="term-bar"><span class="term-label">monitoring</span><button class="copy">copy</button></div><pre>kubectl get pods -n monitoring-staging
 kubectl get pvc  -n monitoring-staging   <span class="c"># both must be Bound, not Pending</span></pre></div>
       <p><code>Pending</code> PVCs send you back to Phase 04 or the EBS CSI driver.</p>
 
-      <h3>12.3 &nbsp;Ingress and TLS</h3>
+      <h4>If both pods are CrashLoopBackOff while the PVCs are Bound</h4>
+      <p>That combination has one overwhelmingly likely cause: <strong>the volume mounts root-owned and the container runs as non-root</strong>, so it cannot write its data directory.</p>
+      <div class="term"><div class="term-bar"><span class="term-label">confirm</span><button class="copy">copy</button></div><pre>kubectl logs -n monitoring-staging -l app=prometheus --tail=20 --previous
+kubectl logs -n monitoring-staging -l app=grafana    --tail=20 --previous</pre></div>
+      <p>Look for <code>permission denied</code> on <code>/prometheus</code>, or <code>GF_PATHS_DATA='/var/lib/grafana' is not writable</code>. <code>Bound</code> only proves the volume attached &mdash; not that anything can write to it.</p>
+      <div class="tw"><table>
+        <thead><tr><th>Image</th><th>Runs as</th><th>Data dir</th></tr></thead>
+        <tbody>
+          <tr><td><code>prom/prometheus:v2.54.1</code></td><td><code>nobody</code>, uid 65534</td><td><code>/prometheus</code></td></tr>
+          <tr><td><code>grafana/grafana:11.2.0</code></td><td><code>grafana</code>, uid 472</td><td><code>/var/lib/grafana</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>A freshly provisioned EBS volume arrives <code>root:root</code> mode 755. <code>securityContext.fsGroup</code> is what makes the kubelet chown it to a group the process belongs to. <strong>Both manifests were missing it</strong> &mdash; now fixed in <code>k8s/monitoring/prometheus-deployment.yaml</code> and <code>grafana-deployment.yaml</code>:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">the fix</span><button class="copy">copy</button></div><pre>    spec:
+      securityContext:
+        runAsUser: 65534      <span class="c"># 472 for Grafana</span>
+        runAsGroup: 65534     <span class="c"># 472 for Grafana</span>
+        fsGroup: 65534        <span class="c"># 472 for Grafana</span></pre></div>
+      <p>Push the fix so CI applies it, or patch the live deployments to unblock verification now:</p>
+      <div class="term"><div class="term-bar"><span class="term-label">live patch</span><button class="copy">copy</button></div><pre>kubectl patch deployment prometheus -n monitoring-staging --type=merge \
+  -p '{"spec":{"template":{"spec":{"securityContext":{"runAsUser":65534,"runAsGroup":65534,"fsGroup":65534}}}}}'
+
+kubectl patch deployment grafana -n monitoring-staging --type=merge \
+  -p '{"spec":{"template":{"spec":{"securityContext":{"runAsUser":472,"runAsGroup":472,"fsGroup":472}}}}}'
+
+kubectl rollout status deployment/prometheus -n monitoring-staging --timeout=120s
+kubectl rollout status deployment/grafana    -n monitoring-staging --timeout=120s</pre></div>
+      <div class="note stop">
+        <span class="note-label">A live patch alone is temporary</span>
+        <p>The <code>deploy-monitoring</code> job re-applies <code>k8s/monitoring/*.yaml</code> on every deploy and will revert it. The manifest change has to be committed, or this breaks again on the next push &mdash; and again on production.</p>
+      </div>
+      <div class="note warn">
+        <span class="note-label">Don&rsquo;t reach for the -no-pvc.yaml variants</span>
+        <p><code>prometheus-deployment-no-pvc.yaml</code> and <code>grafana-deployment-no-pvc.yaml</code> swap the PVC for <code>emptyDir</code>, which is world-writable and so &ldquo;works&rdquo; &mdash; but you lose all metrics history and every Grafana dashboard on each pod restart. That was the old workaround for exactly this bug. <code>fsGroup</code> is the actual fix.</p>
+      </div>
+
+      <h3>13.3 &nbsp;Ingress and TLS</h3>
       <div class="term"><div class="term-bar"><span class="term-label">tls</span><button class="copy">copy</button></div><pre>kubectl get ingress -n staging
 kubectl get certificate -n staging</pre></div>
       <p>Wait for the certificate to reach <code>READY=True</code> &mdash; typically 1&ndash;3 minutes. If it stalls:</p>
@@ -1544,7 +1580,7 @@ kubectl get challenges -n staging
 kubectl describe challenge -n staging</pre></div>
       <p>A stuck challenge means DNS is not yet pointing at the load balancer &mdash; recheck Phase 07.</p>
 
-      <h3>12.4 &nbsp;End to end</h3>
+      <h3>13.4 &nbsp;End to end</h3>
       <div class="term"><div class="term-bar"><span class="term-label">curl</span><button class="copy">copy</button></div><pre><span class="c"># API route listing — clearest proof the backend is reachable</span>
 curl -s https://api-dev.amritesh.dev/api | head -40
 
@@ -1572,7 +1608,7 @@ open https://api-dev.amritesh.dev/prometheus/</pre></div>
 curl http://localhost:3000/health</pre></div>
       </div>
 
-      <h3>12.5 &nbsp;Prometheus is actually scraping</h3>
+      <h3>13.6 &nbsp;Prometheus is actually scraping</h3>
       <div class="term"><div class="term-bar"><span class="term-label">port-forward</span><button class="copy">copy</button></div><pre>kubectl port-forward -n monitoring-staging svc/prometheus 9090:9090</pre></div>
       <p>Open <code>localhost:9090/prometheus/targets</code> &mdash; the <code>jomo-backend-staging</code> job should read <strong>UP</strong>. Then <code>/prometheus/alerts</code> should list 4 rules. Note the <code>/prometheus</code> prefix: the deployment sets <code>--web.route-prefix=/prometheus</code>.</p>
       <label class="chk"><input type="checkbox" data-p="13"><span>Phase 13 complete</span></label>
@@ -1588,16 +1624,16 @@ curl http://localhost:3000/health</pre></div>
         </div>
       </div>
 
-      <h3>13.1 &nbsp;Apply the HPA</h3>
+      <h3>14.1 &nbsp;Apply the HPA</h3>
       <p><code>k8s/hpa.yaml</code> has no namespace and is not applied by the workflow. Apply it now that metrics-server exists:</p>
       <div class="term"><div class="term-bar"><span class="term-label">hpa</span><button class="copy">copy</button></div><pre>kubectl apply -f k8s/hpa.yaml -n staging
 kubectl get hpa -n staging</pre></div>
       <p>The <code>TARGETS</code> column must show a real percentage, not <code>&lt;unknown&gt;</code>.</p>
 
-      <h3>13.2 &nbsp;Import the Grafana dashboard</h3>
+      <h3>14.2 &nbsp;Import the Grafana dashboard</h3>
       <p>Grafana &rarr; Dashboards &rarr; New &rarr; Import &rarr; Upload JSON file &rarr; <code>monitoring/grafana/dashboards/jomobit-overview.json</code> &rarr; select the <code>Prometheus</code> datasource &rarr; Import.</p>
 
-      <h3>13.3 &nbsp;Repoint third-party services</h3>
+      <h3>14.3 &nbsp;Repoint third-party services</h3>
       <div class="tw"><table>
         <thead><tr><th>Service</th><th>What to update</th></tr></thead>
         <tbody>
@@ -1609,7 +1645,7 @@ kubectl get hpa -n staging</pre></div>
       </table></div>
       <p>Verified against <code>src/routes/webhooks.js</code> &mdash; Auth0 uses <code>/api/webhooks/auth0</code> plus <code>/auth0/user-registration</code>, <code>/user-login</code>, <code>/user-update</code>, and <code>/user-deletion</code>.</p>
 
-      <h3>13.4 &nbsp;Optional: network policy</h3>
+      <h3>14.4 &nbsp;Optional: network policy</h3>
       <div class="term"><div class="term-bar"><span class="term-label">optional</span><button class="copy">copy</button></div><pre>kubectl apply -f k8s/network-policy.yaml -n staging</pre></div>
       <p>Read it first. EKS&rsquo;s default VPC CNI does <strong>not</strong> enforce NetworkPolicy unless network policy support is explicitly enabled on the <code>vpc-cni</code> addon, so this may be a silent no-op.</p>
       <label class="chk"><input type="checkbox" data-p="14"><span>Phase 14 complete</span></label>

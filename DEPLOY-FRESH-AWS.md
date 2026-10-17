@@ -1125,6 +1125,58 @@ kubectl get pvc -n monitoring-staging     # both must be Bound, not Pending
 
 `Pending` PVCs mean Phase 04 or the EBS CSI driver needs another look.
 
+#### If both pods are `CrashLoopBackOff` while the PVCs are `Bound`
+
+That combination has one overwhelmingly likely cause: **the volume mounts root-owned and the
+container runs as non-root**, so it can't write its data directory.
+
+```bash
+kubectl logs -n monitoring-staging -l app=prometheus --tail=20 --previous
+kubectl logs -n monitoring-staging -l app=grafana    --tail=20 --previous
+```
+
+Look for `permission denied` on `/prometheus`, or `GF_PATHS_DATA='/var/lib/grafana' is not
+writable`. `Bound` only proves the volume attached — not that anything can write to it.
+
+| Image | Runs as | Data dir |
+|---|---|---|
+| `prom/prometheus:v2.54.1` | `nobody`, uid 65534 | `/prometheus` |
+| `grafana/grafana:11.2.0` | `grafana`, uid 472 | `/var/lib/grafana` |
+
+A freshly provisioned EBS volume arrives `root:root` mode 755. `securityContext.fsGroup` is what
+makes the kubelet chown it to a group the process belongs to. **Both manifests were missing it** —
+now fixed in `k8s/monitoring/prometheus-deployment.yaml` and `grafana-deployment.yaml`:
+
+```yaml
+    spec:
+      securityContext:
+        runAsUser: 65534      # 472 for Grafana
+        runAsGroup: 65534     # 472 for Grafana
+        fsGroup: 65534        # 472 for Grafana
+```
+
+Push the fix so CI applies it, or patch the live deployments to unblock verification now:
+
+```bash
+kubectl patch deployment prometheus -n monitoring-staging --type=merge \
+  -p '{"spec":{"template":{"spec":{"securityContext":{"runAsUser":65534,"runAsGroup":65534,"fsGroup":65534}}}}}'
+
+kubectl patch deployment grafana -n monitoring-staging --type=merge \
+  -p '{"spec":{"template":{"spec":{"securityContext":{"runAsUser":472,"runAsGroup":472,"fsGroup":472}}}}}'
+
+kubectl rollout status deployment/prometheus -n monitoring-staging --timeout=120s
+kubectl rollout status deployment/grafana    -n monitoring-staging --timeout=120s
+```
+
+> ⚠️ **A live patch alone is temporary.** The `deploy-monitoring` job re-applies
+> `k8s/monitoring/*.yaml` on every deploy and will revert it. The manifest change has to be
+> committed, or this breaks again on the next push — and again on production.
+
+> **Don't reach for the `-no-pvc.yaml` variants.** `prometheus-deployment-no-pvc.yaml` and
+> `grafana-deployment-no-pvc.yaml` swap the PVC for `emptyDir`, which is world-writable and so
+> "works" — but you lose all metrics history and every Grafana dashboard on each pod restart. That
+> was the old workaround for exactly this bug. `fsGroup` is the actual fix.
+
 ### 13.3 Ingress and TLS
 
 ```bash

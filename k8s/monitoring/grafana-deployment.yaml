@@ -13,6 +13,12 @@ spec:
       labels:
         app: grafana
     spec:
+      # EBS volumes mount root-owned; grafana/grafana runs as uid 472.
+      # Without fsGroup the container cannot write /var/lib/grafana and crash-loops.
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
       containers:
         - name: grafana
           image: grafana/grafana:11.2.0
