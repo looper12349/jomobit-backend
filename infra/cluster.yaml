@@ -1,0 +1,42 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: 4-jomo-cluster
+  region: ap-south-1
+  version: "1.31"
+
+# API auth mode lets us grant the CI user cluster access via EKS Access
+# Entries (Phase 09) instead of hand-editing the aws-auth ConfigMap.
+accessConfig:
+  authenticationMode: API_AND_CONFIG_MAP
+
+iam:
+  withOIDC: true
+
+# aws-ebs-csi-driver is REQUIRED: without it the Prometheus and
+# Grafana PVCs stay Pending forever.
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+
+managedNodeGroups:
+  - name: ng-general
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    volumeSize: 30
+    volumeType: gp3
+    # Private nodes egress through a single NAT gateway = ONE stable
+    # public IP, which is what makes the Atlas allowlist in Phase 08 work.
+    privateNetworking: true
+    labels:
+      role: general
+    tags:
+      Project: jomobit
+      Environment: shared

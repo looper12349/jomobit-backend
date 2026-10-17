@@ -8,7 +8,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: api-dev-jomo.dazzeldigital.com
+    - host: api-dev.amritesh.dev
       http:
         paths:
           # Grafana Staging - no rewrite needed, Grafana handles /grafana subpath

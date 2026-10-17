@@ -6,7 +6,7 @@ spec:
   acme:
     # Production Let's Encrypt server
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@dazzeldigital.com  # Change this to your email
+    email: indalamritesh@gmail.com  # Change this to your email
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
