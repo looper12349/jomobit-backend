@@ -8,7 +8,9 @@ spec:
     kind: Deployment
     name: jomo-backend
   minReplicas: 2
-  maxReplicas: 10
+  # 2 x t3a.small nodes: four ~256Mi pods is the ceiling that still leaves
+  # room for the monitoring stack.
+  maxReplicas: 4
   metrics:
   - type: Resource
     resource:

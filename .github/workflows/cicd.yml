@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, feature/scaling, feature/enhance-generation]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:      
     inputs:
       environment:
@@ -31,6 +31,12 @@ on:
 env:
   DOCKER_IMAGE: ai29/jomo-backend
   CONTAINER_NAME: jomo-backend
+
+# OIDC: deploy jobs swap a short-lived GitHub token for the
+# github-actions-jomo-deploy IAM role. No AWS keys are stored in GitHub.
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   # Run tests (if you have any)
@@ -168,8 +174,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Update kubeconfig for EKS
@@ -230,7 +235,8 @@ jobs:
               app: jomo-backend
               environment: ${{ needs.build-and-push.outputs.environment }}
           spec:
-            replicas: 2
+            # No replicas field: the HPA owns the replica count, and setting it
+            # here would reset the deployment to a fixed size on every release.
             selector:
               matchLabels:
                 app: jomo-backend
@@ -259,6 +265,12 @@ jobs:
                         value: "${{ needs.build-and-push.outputs.environment }}"
                       - name: PORT
                         value: "3000"
+                      # Surfaced by /health and the jomobit_app_info metric so
+                      # the running version can be traced back to this commit.
+                      - name: GIT_SHA
+                        value: "${{ github.sha }}"
+                      - name: IMAGE_TAG
+                        value: "${{ needs.build-and-push.outputs.image-tag }}"
                     livenessProbe:
                       httpGet:
                         path: /health
@@ -267,7 +279,7 @@ jobs:
                       periodSeconds: 10
                     readinessProbe:
                       httpGet:
-                        path: /health
+                        path: /ready
                         port: 3000
                       initialDelaySeconds: 10
                       periodSeconds: 5
@@ -300,6 +312,33 @@ jobs:
             --namespace=${{ needs.build-and-push.outputs.namespace }} \
             --timeout=300s
 
+      - name: Apply autoscaling and network policy
+        run: |
+          kubectl apply -n ${{ needs.build-and-push.outputs.namespace }} -f k8s/hpa.yaml
+          # Enforced by the VPC CNI network policy agent (enableNetworkPolicy in infra/cluster.yaml).
+          kubectl apply -n ${{ needs.build-and-push.outputs.namespace }} -f k8s/network-policy.yaml
+
+      - name: Smoke test - live version matches this commit
+        run: |
+          NS=${{ needs.build-and-push.outputs.namespace }}
+          # Ask a running pod which build it is serving.
+          LIVE_SHA=$(kubectl -n "$NS" exec deploy/jomo-backend -- \
+            node -e "require('http').get('http://localhost:3000/health',r=>{let b='';r.on('data',d=>b+=d);r.on('end',()=>console.log(JSON.parse(b).version.gitSha))})")
+          echo "expected: ${{ github.sha }}"
+          echo "live:     $LIVE_SHA"
+          [ "$LIVE_SHA" = "${{ github.sha }}" ] || { echo "::error::Deployed pod is not running this commit"; exit 1; }
+
+      - name: Smoke test - public endpoint
+        run: |
+          if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then HOST=api.amritesh.dev; else HOST=api-dev.amritesh.dev; fi
+          # Goes through DNS, TLS, the NLB and ingress-nginx, i.e. the path a real user takes.
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$HOST/api" || true)
+            [ "$code" = "200" ] && { echo "https://$HOST/api -> 200"; exit 0; }
+            echo "attempt $i: got $code, retrying"; sleep 10
+          done
+          echo "::error::https://$HOST/api did not return 200"; exit 1
+
       - name: Verify deployment
         run: |
           echo "📊 Deployment status:"
@@ -318,6 +357,11 @@ jobs:
     needs: [build-and-push, deploy]
     if: needs.build-and-push.outputs.should-deploy == 'true'
 
+    # Needed for OIDC as well as approvals: the IAM role only trusts tokens
+    # whose subject is repo:looper12349/jomobit-backend:environment:*.
+    environment:
+      name: ${{ needs.build-and-push.outputs.environment }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -325,8 +369,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Update kubeconfig for EKS
@@ -350,7 +393,7 @@ jobs:
         run: |
           if ! kubectl get namespace cert-manager &> /dev/null; then
             echo "Installing cert-manager..."
-            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.2/cert-manager.yaml
             echo "Waiting for cert-manager to be ready..."
             kubectl wait --for=condition=available --timeout=180s deployment/cert-manager -n cert-manager
             kubectl wait --for=condition=available --timeout=180s deployment/cert-manager-webhook -n cert-manager
@@ -378,11 +421,20 @@ jobs:
         run: |
           sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/prometheus-rbac.yaml | kubectl apply -f -
 
-      - name: Create Grafana admin password secret
+      - name: Create Grafana admin and Prometheus basic-auth secrets
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
+          # No default password: fail rather than ship a guessable login.
+          [ -n "$GRAFANA_ADMIN_PASSWORD" ] || { echo "::error::GRAFANA_ADMIN_PASSWORD secret is not set"; exit 1; }
           kubectl create secret generic grafana-secrets \
             --namespace=${{ steps.monitoring-ns.outputs.namespace }} \
-            --from-literal=admin-password="${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin123' }}" \
+            --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # htpasswd entry for the /prometheus Ingress (user: admin).
+          kubectl create secret generic prometheus-basic-auth \
+            --namespace=${{ steps.monitoring-ns.outputs.app-namespace }} \
+            --from-literal=auth="admin:$(openssl passwd -apr1 "$GRAFANA_ADMIN_PASSWORD")" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy Prometheus PVC
@@ -435,6 +487,12 @@ jobs:
                   static_configs:
                     - targets: ['kube-state-metrics:8080']
           EOF
+
+      - name: Deploy kube-state-metrics
+        # Scraped by the 'kube-state-metrics' job in the Prometheus config above
+        # (HPA replica counts, pod restarts).
+        run: |
+          sed "s/namespace: monitoring/namespace: ${{ steps.monitoring-ns.outputs.namespace }}/g" k8s/monitoring/kube-state-metrics.yaml | kubectl apply -f -
 
       - name: Deploy Prometheus alerts
         run: |
@@ -527,8 +585,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Update kubeconfig
