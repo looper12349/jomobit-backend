@@ -12,6 +12,7 @@ REGION=ap-south-1
 INGRESS_NGINX_CHART=4.15.1      # controller v1.15.1 (final upstream release)
 CERT_MANAGER_VERSION=v1.21.2    # keep in sync with .github/workflows/cicd.yml
 CI_ROLE_NAME=github-actions-jomo-deploy
+export AWS_REGION="$REGION"
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 CI_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${CI_ROLE_NAME}"
