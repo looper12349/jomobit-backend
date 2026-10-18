@@ -4,39 +4,72 @@ kind: ClusterConfig
 metadata:
   name: 4-jomo-cluster
   region: ap-south-1
-  version: "1.31"
+  # Must be a version in STANDARD support. 1.31-1.33 are in extended support,
+  # which bills the control plane at $0.60/hr instead of $0.10/hr.
+  # Check: aws eks describe-cluster-versions
+  version: "1.35"
+  tags:
+    Project: jomobit
 
-# API auth mode lets us grant the CI user cluster access via EKS Access
-# Entries (Phase 09) instead of hand-editing the aws-auth ConfigMap.
+# API auth mode lets us grant the CI role cluster access via EKS Access
+# Entries instead of hand-editing the aws-auth ConfigMap.
 accessConfig:
   authenticationMode: API_AND_CONFIG_MAP
 
 iam:
   withOIDC: true
 
-# aws-ebs-csi-driver is REQUIRED: without it the Prometheus and
-# Grafana PVCs stay Pending forever.
+# No NAT gateway ($0.056/hr + $0.056/GB). Nodes sit in public subnets and
+# egress directly, so the MongoDB Atlas allowlist needs the node public IPs.
+vpc:
+  nat:
+    gateway: Disable
+
 addons:
+  # enableNetworkPolicy makes k8s/network-policy.yaml actually enforced.
+  # Prefix delegation lifts the per-node pod limit on small instances
+  # (t3a.small is 8 pods without it).
   - name: vpc-cni
+    configurationValues: |-
+      enableNetworkPolicy: "true"
+      env:
+        ENABLE_PREFIX_DELEGATION: "true"
+        WARM_PREFIX_TARGET: "1"
   - name: coredns
   - name: kube-proxy
+  # Required by the HPA (CPU utilisation). One small replica is enough here.
+  - name: metrics-server
+    configurationValues: |-
+      replicas: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+  # aws-ebs-csi-driver is REQUIRED: without it the Prometheus and
+  # Grafana PVCs stay Pending forever.
   - name: aws-ebs-csi-driver
     wellKnownPolicies:
       ebsCSIController: true
+    configurationValues: |-
+      controller:
+        replicaCount: 1
 
 managedNodeGroups:
-  - name: ng-general
-    instanceType: t3.medium
+  - name: ng-small
+    # t3a.small: 2 vCPU / 2 GiB at $0.0123/hr. Sized for a ~$35/week budget;
+    # see docs/CAPSTONE-EVIDENCE.md for the cost breakdown.
+    instanceType: t3a.small
     desiredCapacity: 2
     minSize: 2
-    maxSize: 4
-    volumeSize: 30
+    maxSize: 3
+    volumeSize: 20
     volumeType: gp3
-    # Private nodes egress through a single NAT gateway = ONE stable
-    # public IP, which is what makes the Atlas allowlist in Phase 08 work.
-    privateNetworking: true
+    privateNetworking: false
+    # kubelet reserves 255Mi + 11Mi per allowed pod, so keep this modest on
+    # 2 GiB nodes rather than the prefix-delegation maximum of 110.
+    maxPodsPerNode: 20
     labels:
       role: general
     tags:
       Project: jomobit
-      Environment: shared
+      Environment: staging
