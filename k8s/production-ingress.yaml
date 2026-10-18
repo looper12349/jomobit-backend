@@ -26,17 +26,8 @@ spec:
                 name: jomo-backend-service
                 port:
                   number: 80
-          
-          # Metrics endpoint (Prometheus scraping)
-          - path: /metrics
-            pathType: Exact
-            backend:
-              service:
-                name: jomo-backend-service
-                port:
-                  number: 80
-          
-          # Grafana Monitoring
+
+          # Grafana Monitoring (has its own login)
           - path: /grafana
             pathType: Prefix
             backend:
@@ -44,8 +35,34 @@ spec:
                 name: grafana
                 port:
                   number: 3000
-          
-          # Prometheus Monitoring
+
+          # /metrics is deliberately NOT exposed: Prometheus scrapes the pods
+          # directly inside the cluster.
+---
+# Prometheus has no login of its own, so it gets a separate Ingress with
+# basic auth. (Annotations apply to every path in an Ingress, so putting auth
+# on the one above would also lock /api.) The auth secret is created by CI
+# from the GRAFANA_ADMIN_PASSWORD GitHub secret.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: production-prometheus-ingress
+  namespace: production
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: prometheus-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Prometheus - authentication required"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.amritesh.dev
+      secretName: production-tls
+  rules:
+    - host: api.amritesh.dev
+      http:
+        paths:
           - path: /prometheus
             pathType: Prefix
             backend:

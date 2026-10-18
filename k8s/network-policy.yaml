@@ -10,10 +10,29 @@ spec:
   - Ingress
   - Egress
   ingress:
+  # Traffic from the ingress controller only. kubernetes.io/metadata.name is set
+  # automatically on every namespace; the old `name:` label did not exist, so
+  # the previous selector matched nothing.
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx # Allow traffic only from ingress controller. Adjust namespace label as needed.
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+  # Prometheus scraping /metrics from the monitoring namespaces.
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [monitoring-staging, monitoring-prod]
+    ports:
+    - protocol: TCP
+      port: 3000
+  # Pods in the same namespace (in-cluster k6 load test, smoke checks).
+  - from:
+    - podSelector: {}
     ports:
     - protocol: TCP
       port: 3000
