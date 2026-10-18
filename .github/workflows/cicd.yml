@@ -428,6 +428,12 @@ jobs:
                       target_label: namespace
                     - source_labels: [__meta_kubernetes_pod_name]
                       target_label: pod
+
+                # Kubernetes object state: deployment/HPA replica counts, pod
+                # restarts, container status.
+                - job_name: 'kube-state-metrics'
+                  static_configs:
+                    - targets: ['kube-state-metrics:8080']
           EOF
 
       - name: Deploy Prometheus alerts
