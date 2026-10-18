@@ -58,6 +58,12 @@ class DatabaseConnection {
   getConnection() {
     return this.connection;
   }
+
+  // 1 = connected. Used by the readiness probe so a pod that has lost
+  // MongoDB stops receiving traffic instead of failing requests.
+  isReady() {
+    return mongoose.connection.readyState === 1;
+  }
 }
 
 module.exports = new DatabaseConnection();

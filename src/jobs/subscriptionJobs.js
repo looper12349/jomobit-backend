@@ -1,9 +1,16 @@
 const cron = require('node-cron');
+const os = require('os');
+const mongoose = require('mongoose');
 const Subscription = require('../models/Subscription');
 const Plan = require('../models/Plan');
 const creditService = require('../services/creditService');
 const razorpay = require('../config/razorpay.config');
 const logger = require('../utils/logger');
+
+// Every replica fires the same cron schedule at the same minute. The lock makes
+// only one of them do the work; 10 minutes is far shorter than the shortest
+// interval (hourly) and far longer than the gap between replicas firing.
+const JOB_LOCK_TTL_MS = 10 * 60 * 1000;
 
 /**
  * SubscriptionJobs Class
@@ -56,7 +63,7 @@ class SubscriptionJobs {
    */
   scheduleCreditExpiryJob() {
     const job = cron.schedule('0 * * * *', async () => {
-      await this.runCreditExpiryJob();
+      await this.runIfLockAcquired('creditExpiry', () => this.runCreditExpiryJob());
     });
 
     this.jobs.push({ name: 'creditExpiry', job });
@@ -69,7 +76,7 @@ class SubscriptionJobs {
    */
   scheduleReconciliationJob() {
     const job = cron.schedule('0 1 * * *', async () => {
-      await this.runReconciliationJob();
+      await this.runIfLockAcquired('reconciliation', () => this.runReconciliationJob());
     });
 
     this.jobs.push({ name: 'reconciliation', job });
@@ -82,11 +89,52 @@ class SubscriptionJobs {
    */
   scheduleScheduledPlanChangeJob() {
     const job = cron.schedule('0 */6 * * *', async () => {
-      await this.runScheduledPlanChangeJob();
+      await this.runIfLockAcquired('scheduledPlanChange', () => this.runScheduledPlanChangeJob());
     });
 
     this.jobs.push({ name: 'scheduledPlanChange', job });
     logger.info('Scheduled plan change job scheduled (runs every 6 hours)');
+  }
+
+  /**
+   * Claim a cluster-wide lock for one run of a job.
+   * Returns true if this replica got the lock, false if another replica holds it.
+   * The upsert either takes an expired/missing lock or fails with a duplicate
+   * key error (11000) because a live lock document already exists.
+   */
+  async acquireJobLock(jobName, ttlMs = JOB_LOCK_TTL_MS) {
+    const now = new Date();
+    try {
+      await mongoose.connection.collection('job_locks').findOneAndUpdate(
+        { _id: jobName, lockedUntil: { $lte: now } },
+        { $set: { lockedUntil: new Date(now.getTime() + ttlMs), owner: os.hostname(), lockedAt: now } },
+        { upsert: true }
+      );
+      return true;
+    } catch (error) {
+      if (error.code === 11000) return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Run a scheduled job only in the replica that wins the lock
+   */
+  async runIfLockAcquired(jobName, run) {
+    let acquired;
+    try {
+      acquired = await this.acquireJobLock(jobName);
+    } catch (error) {
+      logger.error('Job lock check failed, skipping this run', { jobName, error: error.message });
+      return;
+    }
+
+    if (!acquired) {
+      logger.info('Job skipped: another replica holds the lock', { jobName, host: os.hostname() });
+      return;
+    }
+
+    await run();
   }
 
   /**

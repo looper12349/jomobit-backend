@@ -170,13 +170,27 @@ class App {
     // Setup Swagger documentation
     setupSwagger(this.app);
 
-    // Health check endpoint
+    // Liveness: the process is up. Also reports which build is running so
+    // the deployed version can be checked against the commit.
     this.app.get('/health', (req, res) => {
       res.status(200).json({
         status: 'OK',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        version: {
+          gitSha: process.env.GIT_SHA || 'unknown',
+          imageTag: process.env.IMAGE_TAG || 'unknown'
+        }
+      });
+    });
+
+    // Readiness: only take traffic while MongoDB is connected.
+    this.app.get('/ready', (req, res) => {
+      const ready = databaseConnection.isReady();
+      res.status(ready ? 200 : 503).json({
+        status: ready ? 'READY' : 'NOT_READY',
+        mongodb: ready ? 'connected' : 'disconnected'
       });
     });
 

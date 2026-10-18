@@ -966,7 +966,9 @@ const ipFilter = (options = {}) => {
  * Request correlation ID middleware
  */
 const correlationId = (req, res, next) => {
-  const correlationId = req.get('x-correlation-id') || crypto.randomUUID();
+  // Prefer the X-Request-ID that ingress-nginx generates and writes to its own
+  // access log, so one request can be followed from the ingress into app logs.
+  const correlationId = req.get('x-correlation-id') || req.get('x-request-id') || crypto.randomUUID();
   req.correlationId = correlationId;
   res.setHeader('x-correlation-id', correlationId);
   next();
