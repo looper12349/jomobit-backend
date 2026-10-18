@@ -5,7 +5,9 @@ module.exports = async () => {
   // Start MongoDB Memory Server
   const mongod = new MongoMemoryServer({
     binary: {
-      version: '7.0.0',
+      // 7.0.0 has no Debian 12 / Ubuntu 24.04 build, so the whole suite
+      // failed in CI-like containers before running a single test.
+      version: '7.0.14',
       skipMD5: true,
     },
     instance: {

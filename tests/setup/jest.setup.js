@@ -3,6 +3,17 @@ const mongoose = require('mongoose');
 // Increase timeout for database operations
 jest.setTimeout(30000);
 
+// Several suites start their own MongoMemoryServer and call mongoose.connect()
+// in their own beforeAll. Mongoose refuses a second connect() to a different
+// URI, which failed those suites before a single test ran. Switch instead.
+const connect = mongoose.connect.bind(mongoose);
+mongoose.connect = async (...args) => {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
+  return connect(...args);
+};
+
 // Setup before each test file
 beforeAll(async () => {
   // Connect to MongoDB Memory Server
