@@ -14,6 +14,7 @@
     "test:e2e": "jest tests/e2e --coverage",
     "test:performance": "jest tests/performance --testTimeout=60000",
     "test:ci": "jest --coverage --ci --watchAll=false --maxWorkers=2",
+    "test:gate": "jest --ci --forceExit --maxWorkers=2 tests/unit/utils/errors.test.js tests/unit/services/creditService.atomic.test.js tests/unit/security/vulnerability.test.js tests/unit/controllers/webhookController.test.js tests/unit/services/aiProviders/geminiProvider.test.js tests/unit/services/aiProviders/diffusionProvider.test.js tests/unit/services/aiProviders/baseProvider.test.js tests/setup/setup.test.js tests/unit/jobs/jobLock.test.js",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
     "test:swagger": "node scripts/test-swagger-endpoints.js",
     "test:swagger:debug": "DEBUG=1 node scripts/test-swagger-endpoints.js",

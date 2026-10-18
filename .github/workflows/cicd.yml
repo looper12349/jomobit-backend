@@ -39,33 +39,65 @@ permissions:
   id-token: write
 
 jobs:
-  # Run tests (if you have any)
-  # test:
-  #   name: Run Tests
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name == 'pull_request'
-    
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-      
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '20'
-  #         cache: 'npm'
-      
-  #     - name: Install dependencies
-  #       run: npm ci
-      
-  #     - name: Run tests
-  #       run: npm test
-  #       env:
-  #         NODE_ENV: test
+  # Blocking gate: the suites that currently pass in full. A failure here stops
+  # the image from being built or deployed. See docs/CAPSTONE-EVIDENCE.md for
+  # the suites that are still broken and why they are not in the gate yet.
+  test:
+    name: Test gate
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action != 'rollback'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test gate
+        run: npm run test:gate
+        env:
+          NODE_ENV: test
+
+  # Non-blocking: runs the whole suite and reports the pass/fail numbers on every
+  # run, so the size of the remaining test debt stays visible.
+  full-suite:
+    name: Full test suite (report only)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action != 'rollback'
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full suite
+        run: npx jest --ci --forceExit --maxWorkers=2 --json --outputFile=jest-results.json || true
+        env:
+          NODE_ENV: test
+
+      - name: Summary
+        run: |
+          jq -r '"Suites: \(.numPassedTestSuites)/\(.numTotalTestSuites) passed | Tests: \(.numPassedTests)/\(.numTotalTests) passed"' jest-results.json | tee -a "$GITHUB_STEP_SUMMARY"
 
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    needs: test
 
     outputs:
       should-deploy: ${{ steps.check.outputs.should-deploy }}
@@ -149,12 +181,20 @@ jobs:
             echo "should-deploy=false" >> $GITHUB_OUTPUT
           fi
           
-      - name: Image scan (optional security check)
-        if: github.event_name == 'pull_request'
+      # Runs the pinned Trivy image directly rather than a third-party action.
+      # Blocks deploy on fixable CRITICAL findings; HIGH findings are reported
+      # in the run summary but do not block.
+      - name: Image scan (Trivy)
         run: |
-          echo "🔍 Docker image built successfully"
-          echo "Image: ${{ steps.meta.outputs.tags }}"
-          echo "Digest: ${{ steps.build.outputs.digest }}"
+          IMAGE="${{ env.DOCKER_IMAGE }}@${{ steps.build.outputs.digest }}"
+          TRIVY="docker run --rm -v trivy-cache:/root/.cache aquasec/trivy:0.58.1 image --quiet --ignore-unfixed"
+          {
+            echo "### Trivy scan of \`$IMAGE\`"
+            echo '```'
+            $TRIVY --severity HIGH,CRITICAL --format table "$IMAGE"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          $TRIVY --severity CRITICAL --exit-code 1 "$IMAGE"
 
   deploy:
     name: Deploy to Kubernetes (${{ needs.build-and-push.outputs.environment }})
@@ -317,6 +357,16 @@ jobs:
           kubectl apply -n ${{ needs.build-and-push.outputs.namespace }} -f k8s/hpa.yaml
           # Enforced by the VPC CNI network policy agent (enableNetworkPolicy in infra/cluster.yaml).
           kubectl apply -n ${{ needs.build-and-push.outputs.namespace }} -f k8s/network-policy.yaml
+
+      - name: Apply ingress
+        # Must happen in this job: the public smoke test below goes through it.
+        # The /grafana and /prometheus backends are filled in by deploy-monitoring.
+        run: |
+          if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
+            kubectl apply -f k8s/production-ingress.yaml
+          else
+            kubectl apply -f k8s/staging-ingress.yaml
+          fi
 
       - name: Smoke test - live version matches this commit
         run: |
@@ -523,14 +573,6 @@ jobs:
             kubectl apply -f k8s/production-monitoring-services.yaml
           else
             kubectl apply -f k8s/staging-monitoring-services.yaml
-          fi
-
-      - name: Deploy application ingress with monitoring paths
-        run: |
-          if [ "${{ needs.build-and-push.outputs.environment }}" == "production" ]; then
-            kubectl apply -f k8s/production-ingress.yaml
-          else
-            kubectl apply -f k8s/staging-ingress.yaml
           fi
 
       - name: Wait for monitoring stack
